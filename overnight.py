@@ -158,9 +158,10 @@ REGION_DEFS = {
     'cortex':        {'center': (250, 250, 400), 'radius': 160, 'code': 'CX'},
 }
 
-# Regional excitability: replaces flat tonic.
+# Regional excitability: membrane bias per region.
+# Brainstem is LOW -- the heartbeat provides its rhythmic drive.
 REGION_EXCITABILITY = {
-    'BS': 5.0,   # brainstem: IB neurons burst spontaneously
+    'BS': 2.0,   # brainstem: subthreshold baseline, heartbeat drives it
     'TH': 2.5,   # thalamus: relay, near threshold
     'AM': 2.5,   # amygdala: fast emotional, responsive
     'SN': 2.0,   # sensory: quiet at rest, lights up with input
@@ -168,6 +169,70 @@ REGION_EXCITABILITY = {
     'BG': 1.5,   # basal_ganglia: inhibitory gating
     'CX': 1.5,   # cortex: needs thalamic relay to activate
 }
+
+
+class Heartbeat:
+    """Rhythmic brainstem driver -- the mother's heartbeat.
+
+    Replaces static brainstem excitability with a periodic current pulse.
+    Fetal heart rate ~120 BPM (2 Hz). Short half-sine burst each beat.
+    Brainstem fires on each beat, thalamus relays upward, cortex rides on top.
+
+    The heartbeat is THE fundamental alive signal. It goes from conception
+    to death. Every other rhythm in the brain sits on top of this one.
+    """
+
+    def __init__(self, bs_indices, n_total, bpm=120, amplitude=2.5,
+                 pulse_width=60, variability=0.05, seed=42):
+        """
+        Args:
+            bs_indices: numpy array of brainstem neuron indices
+            n_total: total neuron count (for current array size)
+            bpm: beats per minute (fetal range: 108-138, default 120)
+            amplitude: peak current in mA during beat (added to baseline)
+            pulse_width: duration of each beat pulse in ticks/ms
+            variability: beat-to-beat jitter (fraction of period)
+            seed: RNG seed for jitter reproducibility
+        """
+        self.bs_indices = bs_indices
+        self.n_total = n_total
+        self.bpm = bpm
+        self.period = int(60000 / bpm)  # ms per beat (500 at 120 BPM)
+        self.amplitude = amplitude
+        self.pulse_width = pulse_width
+        self.variability = variability
+        self.phase = 0
+        self.current_period = self.period
+        self.beat_count = 0
+        self.rng = np.random.RandomState(seed)
+
+    def current(self):
+        """Return current array for this tick. Call once per brain.tick().
+
+        Returns zeros between beats, half-sine pulse during beats.
+        """
+        I = np.zeros(self.n_total, dtype=np.float64)
+
+        if self.phase < self.pulse_width and len(self.bs_indices) > 0:
+            # Half-sine pulse: smooth rise and fall, peaks mid-beat
+            t_norm = self.phase / self.pulse_width
+            pulse = self.amplitude * np.sin(np.pi * t_norm)
+            I[self.bs_indices] = pulse
+
+        self.phase += 1
+        if self.phase >= self.current_period:
+            self.phase = 0
+            self.beat_count += 1
+            # Slight beat-to-beat variability (real hearts aren't metronomes)
+            jitter = 1.0 + self.rng.uniform(-self.variability, self.variability)
+            self.current_period = max(200, int(self.period * jitter))
+
+        return I
+
+    def update_indices(self, bs_indices, n_total):
+        """Update after neurogenesis changes brain size."""
+        self.bs_indices = bs_indices
+        self.n_total = n_total
 
 
 def backfill_region_tags(brain):
@@ -353,7 +418,7 @@ def save_brain_to(brain_data, path):
 # ================================================================
 
 def take_snapshot(brain, sensory_indices, rng, total_ticks, cycle,
-                  run_dir, snapshot_num):
+                  run_dir, snapshot_num, heartbeat=None):
     """Take a development snapshot: probe cascade + statistics."""
     snap_path = os.path.join(run_dir, f'snapshot_{snapshot_num:03d}_cycle{cycle:03d}.txt')
 
@@ -368,24 +433,27 @@ def take_snapshot(brain, sensory_indices, rng, total_ticks, cycle,
 
     zeros = np.zeros(brain.n, dtype=np.float64)
 
-    # Run sensory probe (no external current -- brain sustains itself)
+    # Run sensory probe (heartbeat continues during probe)
     I_stim = zeros.copy()
     I_stim[stim_sensory] += 15.0
     pre_spikes = len(brain.recorder.spikes)
     sensory_cascade = []
     for t in range(200):
-        fired = brain.tick(I_stim if t < 5 else zeros)
+        I_base = heartbeat.current() if heartbeat else zeros.copy()
+        if t < 5:
+            I_base[stim_sensory] += 15.0
+        fired = brain.tick(I_base)
         sensory_cascade.append(len(fired))
     sensory_total = len(brain.recorder.spikes) - pre_spikes
 
     # Run internal probe
-    I_stim2 = zeros.copy()
-    if len(stim_other) > 0:
-        I_stim2[stim_other.astype(int)] += 15.0
     pre_spikes2 = len(brain.recorder.spikes)
     internal_cascade = []
     for t in range(200):
-        fired = brain.tick(I_stim2 if t < 5 else zeros)
+        I_base = heartbeat.current() if heartbeat else zeros.copy()
+        if t < 5 and len(stim_other) > 0:
+            I_base[stim_other.astype(int)] += 15.0
+        fired = brain.tick(I_base)
         internal_cascade.append(len(fired))
     internal_total = len(brain.recorder.spikes) - pre_spikes2
 
@@ -501,8 +569,16 @@ def run_overnight(args):
     print(f"  Sensory region: {len(sensory_indices)} neurons")
 
     # Bootstrap: replace flat tonic with regional excitability
-    # Brainstem drives thalamus drives cortex. No artificial life support.
+    # Brainstem is low baseline -- heartbeat provides its rhythmic drive.
     bootstrap_regional_drive(brain)
+
+    # Heartbeat: the mother's heart drives the brainstem rhythmically.
+    # 120 BPM = 2 Hz, half-sine pulse, 60ms wide, 2.5 mA peak.
+    bs_indices = get_region_indices(brain, 'BS')
+    heartbeat = Heartbeat(bs_indices, brain.n, bpm=120, amplitude=2.5,
+                          pulse_width=60, variability=0.05)
+    print(f"  Heartbeat: {heartbeat.bpm} BPM, {len(bs_indices)} brainstem neurons, "
+          f"{heartbeat.amplitude} mA peak")
 
     # Load voice clips
     voice_dir = os.path.join(BASE, 'media', 'womb_phase')
@@ -550,7 +626,7 @@ def run_overnight(args):
     snapshot_num = 0
 
     print(f"\n  Taking initial snapshot...")
-    take_snapshot(brain, sensory_indices, rng, 0, 0, run_dir, 0)
+    take_snapshot(brain, sensory_indices, rng, 0, 0, run_dir, 0, heartbeat)
 
     # Post-birth callback: tag region + assign excitability to newly born neurons
     def assign_regional_excitability(brain, new_indices):
@@ -596,9 +672,9 @@ def run_overnight(args):
         print(f"  Brain: {brain.n}N, {len(brain.synapses)}S ({sc_str})")
         print(f"  DAS: D={brain.sensory_ema:.4f} A={brain.arousal:.4f} S={brain.learning_rate_scale:.3f}")
 
-        # Phase 1: WARM UP (1000 ticks, brainstem drive only)
+        # Phase 1: WARM UP (1000 ticks, heartbeat only)
         for t in range(1000):
-            fired = brain.tick(np.zeros(brain.n, dtype=np.float64))
+            fired = brain.tick(heartbeat.current())
             cycle_spikes += len(fired)
             total_ticks += 1
 
@@ -610,7 +686,7 @@ def run_overnight(args):
                 fname, bands = music_bands[mi]
                 file_spikes = 0
                 for frame in range(bands.shape[0]):
-                    I = np.zeros(brain.n, dtype=np.float64)
+                    I = heartbeat.current()
                     I += bands_to_current(bands[frame:frame+1], sensory_indices,
                                           brain.n, audio_gain=args.audio_gain)
                     fired = brain.tick(I)
@@ -622,15 +698,18 @@ def run_overnight(args):
                     stats = brain.dynamic_growth(rng=rng, post_birth_fn=assign_regional_excitability)
                     for k in cycle_growth:
                         cycle_growth[k] += stats.get(k, 0)
+                    if stats.get('neurons_born', 0) > 0:
+                        heartbeat.update_indices(get_region_indices(brain, 'BS'), brain.n)
+                        sensory_indices = find_sensory_neurons(brain)
 
                 g = cycle_growth
                 gstr = f", +{g['neurons_born']}N +{g['synapses_added']}S" if g['neurons_born'] else ''
                 print(f"    M[{track_i+1:2d}] {fname}: {file_spikes} spk, "
                       f"D={brain.sensory_ema:.3f} A={brain.arousal:.3f}{gstr}")
 
-            # --- SILENCE ---
+            # --- SILENCE (heartbeat only) ---
             for t in range(silence_ticks):
-                fired = brain.tick(np.zeros(brain.n, dtype=np.float64))
+                fired = brain.tick(heartbeat.current())
                 cycle_spikes += len(fired)
                 total_ticks += 1
 
@@ -640,7 +719,7 @@ def run_overnight(args):
                 fname, bands = voice_bands[vi]
                 file_spikes = 0
                 for frame in range(bands.shape[0]):
-                    I = np.zeros(brain.n, dtype=np.float64)
+                    I = heartbeat.current()
                     I += bands_to_current(bands[frame:frame+1], sensory_indices,
                                           brain.n, audio_gain=args.audio_gain)
                     fired = brain.tick(I)
@@ -652,15 +731,18 @@ def run_overnight(args):
                     stats = brain.dynamic_growth(rng=rng, post_birth_fn=assign_regional_excitability)
                     for k in cycle_growth:
                         cycle_growth[k] += stats.get(k, 0)
+                    if stats.get('neurons_born', 0) > 0:
+                        heartbeat.update_indices(get_region_indices(brain, 'BS'), brain.n)
+                        sensory_indices = find_sensory_neurons(brain)
 
                 born = cycle_growth['neurons_born']
                 born_str = f', +{born}N' if born else ''
                 print(f"    V[{track_i+1:2d}] {fname}: {file_spikes} spk, "
                       f"D={brain.sensory_ema:.3f} A={brain.arousal:.3f}{born_str}")
 
-            # --- SILENCE ---
+            # --- SILENCE (heartbeat only) ---
             for t in range(silence_ticks):
-                fired = brain.tick(np.zeros(brain.n, dtype=np.float64))
+                fired = brain.tick(heartbeat.current())
                 cycle_spikes += len(fired)
                 total_ticks += 1
 
@@ -686,7 +768,7 @@ def run_overnight(args):
 
         cycle_elapsed = time.time() - cycle_start
         print(f"  Cycle {cycle} done: {cycle_elapsed:.0f}s, {cycle_spikes} spk, "
-              f"{brain.n}N {len(brain.synapses)}S")
+              f"{brain.n}N {len(brain.synapses)}S, {heartbeat.beat_count} heartbeats")
 
         # Save brain every cycle
         save_path = os.path.join(run_dir, f'brain_cycle_{cycle:03d}.db')
@@ -703,13 +785,13 @@ def run_overnight(args):
         if now - last_snapshot_time >= args.snapshot_interval:
             snapshot_num += 1
             take_snapshot(brain, sensory_indices, rng,
-                         total_ticks, cycle, run_dir, snapshot_num)
+                         total_ticks, cycle, run_dir, snapshot_num, heartbeat)
             last_snapshot_time = now
 
     # Final snapshot + save
     snapshot_num += 1
     take_snapshot(brain, sensory_indices, rng,
-                 total_ticks, args.cycles, run_dir, snapshot_num)
+                 total_ticks, args.cycles, run_dir, snapshot_num, heartbeat)
 
     final_path = os.path.join(run_dir, 'brain_final.db')
     brain.sync_state()
