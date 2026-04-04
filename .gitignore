@@ -3,3 +3,6 @@ __pycache__/
 brains/
 *.db
 results/
+snapshots/
+media/womb_phase/*.mp3
+media/classical/
