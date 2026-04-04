@@ -630,10 +630,10 @@ class Brain:
         return wire_new_neurons(self, neuron_indices, radius, density,
                                 syn_type, weight, rng)
 
-    def dynamic_growth(self, rng=None):
+    def dynamic_growth(self, rng=None, post_birth_fn=None):
         """Emergent growth. See growth/dynamic.py."""
         from growth.dynamic import dynamic_growth
-        return dynamic_growth(self, rng)
+        return dynamic_growth(self, rng, post_birth_fn=post_birth_fn)
 
     # ==================================================================
     # CORE METHODS -- stay in runner.py (part of tick flow)

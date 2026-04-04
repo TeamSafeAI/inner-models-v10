@@ -47,8 +47,18 @@ def update_signals(brain, external_I, tick):
     Modifies brain state in place.
     """
     # Compute sensory energy from external input
+    # Use sensory_mask if available (targets only sensory region neurons)
+    # so the signal isn't drowned by thousands of flat-tonic neurons
     if external_I is not None:
-        sensory_energy = float(np.var(external_I))
+        if hasattr(brain, 'sensory_mask') and brain.sensory_mask is not None:
+            mask = brain.sensory_mask
+            # Auto-extend mask if neurons were born (new neurons aren't sensory)
+            if len(mask) < len(external_I):
+                mask = np.concatenate([mask, np.zeros(len(external_I) - len(mask), dtype=bool)])
+                brain.sensory_mask = mask
+            sensory_energy = float(np.var(external_I[mask]))
+        else:
+            sensory_energy = float(np.var(external_I))
     else:
         sensory_energy = 0.0
 

@@ -37,16 +37,28 @@ REGION_CENTERS = {
 }
 
 
+CODE_TO_REGION = {
+    'BS': 'brainstem', 'SN': 'sensory', 'TH': 'thalamus',
+    'AM': 'amygdala', 'HP': 'hippocampus', 'BG': 'basal_ganglia',
+    'CX': 'cortex', 'SM': 'somatosensory',
+}
+
 def get_neuron_regions(neurons, n):
-    """Assign neurons to nearest region center (from grow_regional.py layout)."""
+    """Get region for each neuron. Uses region tag if available, falls back to spatial."""
+    # Try region tag first
+    if neurons and neurons[0].get('region', ''):
+        regions = {}
+        for i in range(n):
+            code = neurons[i].get('region', '')
+            regions[i] = CODE_TO_REGION.get(code, code or 'unknown')
+        return regions
+
+    # Fallback: spatial lookup (old brains without tags)
     centers = np.array(list(REGION_CENTERS.values()), dtype=float)
     names = list(REGION_CENTERS.keys())
-
     positions = np.array([[nn['pos_x'], nn['pos_y'], nn['pos_z']] for nn in neurons])
-    # Nearest center for each neuron
-    dists = np.linalg.norm(positions[:, None, :] - centers[None, :, :], axis=2)  # (N, R)
+    dists = np.linalg.norm(positions[:, None, :] - centers[None, :, :], axis=2)
     nearest = np.argmin(dists, axis=1)
-
     regions = {}
     for i in range(n):
         regions[i] = names[nearest[i]]

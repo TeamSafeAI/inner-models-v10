@@ -531,6 +531,13 @@ def save_regional_db(neurons, synapses, pair_counts, params, regions_used, db_pa
         'ch':  {'a': 0.02,  'b': 0.2,  'c': -50.0, 'd': 2.0},
     }
 
+    # Region name -> short code mapping
+    REGION_CODES = {
+        'brainstem': 'BS', 'sensory': 'SN', 'thalamus': 'TH',
+        'amygdala': 'AM', 'hippocampus': 'HP', 'basal_ganglia': 'BG',
+        'cortex': 'CX', 'somatosensory': 'SM',
+    }
+
     conn = create_brain_db(db_path)
 
     # Insert neurons with region metadata
@@ -553,14 +560,15 @@ def save_regional_db(neurons, synapses, pair_counts, params, regions_used, db_pa
         else:
             dopa_sens = rng.uniform(-0.2, 0.2)
 
+        region_code = REGION_CODES.get(region, '')
         conn.execute(
             """INSERT INTO neurons
                (neuron_type, a, b, c, d, v, u, last_spike,
-                pos_x, pos_y, pos_z, dopamine_sens, excitability, activity_trace)
-               VALUES (?, ?, ?, ?, ?, -65, ?, -1000, ?, ?, ?, ?, 0, 0)""",
+                pos_x, pos_y, pos_z, dopamine_sens, excitability, activity_trace, region)
+               VALUES (?, ?, ?, ?, ?, -65, ?, -1000, ?, ?, ?, ?, 0, 0, ?)""",
             (nt_upper, a, b, c, d, b * -65.0,
              neurons['x'][i], neurons['y'][i], neurons['z'][i],
-             dopa_sens)
+             dopa_sens, region_code)
         )
 
     db_ids = [row[0] for row in conn.execute("SELECT id FROM neurons ORDER BY id")]
@@ -776,6 +784,20 @@ def main():
         regions['thalamus']['n_fraction'] = 0.10
         regions['brainstem']['n_fraction'] = 0.12
         regions['sensory']['n_fraction'] = 0.08
+    elif args.config == 'overnight':
+        # Full-featured balanced brain for overnight development.
+        # Larger sensory (audio input), strong thalamic relay,
+        # everything represented. Designed for growth experiments.
+        regions['cortex']['n_fraction'] = 0.30
+        regions['cortex']['radius'] = 160
+        regions['hippocampus']['n_fraction'] = 0.15
+        regions['basal_ganglia']['n_fraction'] = 0.12
+        regions['brainstem']['n_fraction'] = 0.10
+        regions['thalamus']['n_fraction'] = 0.12
+        regions['thalamus']['attractant'] = 2.0   # strong relay
+        regions['sensory']['n_fraction'] = 0.12    # bigger -- audio input
+        regions['sensory']['radius'] = 85          # wider to fit more neurons
+        regions['amygdala']['n_fraction'] = 0.09
 
     # Auto-calculate contact radius if not specified
     if args.contact_radius is None:

@@ -116,7 +116,8 @@ CREATE TABLE IF NOT EXISTS neurons (
     pos_z REAL NOT NULL DEFAULT 0.0,
     dopamine_sens REAL NOT NULL DEFAULT 0.0,
     excitability REAL NOT NULL DEFAULT 0.0,
-    activity_trace REAL NOT NULL DEFAULT 0.0
+    activity_trace REAL NOT NULL DEFAULT 0.0,
+    region TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS synapses (

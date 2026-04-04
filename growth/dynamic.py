@@ -16,8 +16,11 @@ from growth.neurogenesis import birth_neurons
 from growth.wiring import wire_new_neurons
 
 
-def dynamic_growth(brain, rng=None):
+def dynamic_growth(brain, rng=None, post_birth_fn=None):
     """Emergent growth. No rate parameter -- signals decide everything.
+
+    post_birth_fn(brain, new_indices): optional callback after birth to set
+    regional excitability or other properties on new neurons.
 
     Returns dict with stats: neurons_born, synapses_added, neurons_culled.
     """
@@ -59,6 +62,10 @@ def dynamic_growth(brain, rng=None):
             # Tag birth tick for survival tracking
             for ni in new_idx:
                 brain.neurons[ni]['birth_tick'] = brain.tick_count
+
+            # Let caller assign regional excitability etc.
+            if post_birth_fn is not None:
+                post_birth_fn(brain, new_idx)
 
     # 2. SYNAPTOGENESIS on existing neurons: when brain is unstable
     if brain.learning_rate_scale < 0.7 and surprise_level > 0.1:

@@ -6,3 +6,5 @@ results/
 snapshots/
 media/womb_phase/*.mp3
 media/classical/
+overnight_logs/
+overnight_output.log

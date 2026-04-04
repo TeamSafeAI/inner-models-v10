@@ -32,6 +32,7 @@ def load(db_path):
     col_info = conn.execute("PRAGMA table_info(neurons)").fetchall()
     col_names = {c[1] for c in col_info}
     has_neuromod = 'dopamine_sens' in col_names
+    has_region = 'region' in col_names
 
     # Load neurons
     neuron_list = []
@@ -56,6 +57,7 @@ def load(db_path):
             'dopamine_sens': row['dopamine_sens'] if has_neuromod else 0.0,
             'excitability': row['excitability'] if has_neuromod else 0.0,
             'activity_trace': row['activity_trace'] if has_neuromod else 0.0,
+            'region': row['region'] if has_region else '',
         })
 
     # Map DB IDs to array indices

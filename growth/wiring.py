@@ -52,7 +52,8 @@ def wire_new_neurons(brain, neuron_indices, radius=50.0, density=0.05,
                     'id': max_syn_id, 'source': ni, 'target': tgt,
                     'source_db_id': brain.neurons[ni]['id'],
                     'target_db_id': brain.neurons[tgt]['id'],
-                    'type': syn_type, 'weight': w, 'delay': 1,
+                    'type': syn_type, 'module': plastic_module,
+                    'weight': w, 'delay': 1,
                     'learning_rate': 0.01,
                     'w_min': -10.0 if is_inh else 0.0,
                     'w_max': 0.0 if is_inh else 10.0,
@@ -74,7 +75,8 @@ def wire_new_neurons(brain, neuron_indices, radius=50.0, density=0.05,
                     'id': max_syn_id, 'source': tgt, 'target': ni,
                     'source_db_id': brain.neurons[tgt]['id'],
                     'target_db_id': brain.neurons[ni]['id'],
-                    'type': syn_type, 'weight': w, 'delay': 1,
+                    'type': syn_type, 'module': plastic_module,
+                    'weight': w, 'delay': 1,
                     'learning_rate': 0.01,
                     'w_min': -10.0 if is_inh else 0.0,
                     'w_max': 0.0 if is_inh else 10.0,
@@ -90,6 +92,9 @@ def wire_new_neurons(brain, neuron_indices, radius=50.0, density=0.05,
     if new_syns:
         brain.synapses.extend(new_syns)
         brain.data['synapses'] = brain.synapses
-        brain._build_synapse_structures()
+
+    # Always rebuild: brain.n may have changed from birth_neurons()
+    # even if no new synapses were created for these neurons
+    brain._build_synapse_structures()
 
     return len(new_syns)
