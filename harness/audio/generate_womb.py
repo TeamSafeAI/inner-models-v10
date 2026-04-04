@@ -1,10 +1,10 @@
 """
-generate_womb_audio.py -- Generate soothing voice lines for womb phase using OpenAI TTS.
+generate_womb.py -- Generate soothing voice lines for womb phase using OpenAI TTS.
 
 Usage:
-    py generate_womb_audio.py
-    py generate_womb_audio.py --voice nova --speed 0.85
-    py generate_womb_audio.py --key sk-...
+    py harness/audio/generate_womb.py
+    py harness/audio/generate_womb.py --voice nova --speed 0.85
+    py harness/audio/generate_womb.py --key sk-...
 
 Requires: openai package (pip install openai)
 Set OPENAI_API_KEY env var or pass --key.
@@ -15,7 +15,8 @@ import os
 import sys
 import argparse
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+# Project root (grandparent of harness/audio/)
+BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 15 soothing voice lines -- calm, rhythmic, repetitive
 VOICE_LINES = [

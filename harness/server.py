@@ -1,20 +1,19 @@
 """
-brain_viewer_server.py -- WebSocket server streaming brain activity to a 3D viewer.
+server.py -- WebSocket server streaming brain activity to a 3D viewer.
 
-Loads a V9-grown brain, ticks it with tonic drive, and sends spike data
-to a browser client for real-time 3D visualization. Supports sensory I/O:
-audio in (mic FFT), visual in (webcam pixels), touch in (electrode probe),
-and motor out (firing readout from designated neurons).
+The harness: loads a brain, ticks it, streams state to the viewer.
+Supports sensory I/O: audio (mic FFT / file playback), webcam, touch, motor.
 
 Usage:
-    py brain_viewer_server.py
-    py brain_viewer_server.py --brain brains/regional_cortex_heavy_s42.db
-    py brain_viewer_server.py --tonic 3.0 --speed 2.0
+    py harness/server.py
+    py harness/server.py --brain brains/test_v10.db
+    py harness/server.py --tonic 3.0 --speed 2.0 --growth
 """
 import os, sys, json, time, asyncio, argparse
 import numpy as np
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+# BASE = project root (parent of harness/)
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE)
 
 from engine.loader import load
@@ -473,7 +472,7 @@ async def main():
     print(f"    Visual: {IO['visual_channels']} channels x {IO['visual_pop_size']} neurons = {len(visual_list)} (avg out={visual_out:.0f})")
     print(f"    Motor: {IO['motor_channels']} channels x {IO['motor_pop_size']} neurons = {len(motor_list)} (avg in={motor_in:.0f})")
     print(f"  Tonic: {args.tonic}, Speed: {args.speed}x")
-    print(f"  Viewer: http://localhost:{args.port - 1}/brain_viewer.html")
+    print(f"  Viewer: http://localhost:{args.port - 1}/harness/viewer.html")
 
     # HTTP server for static files
     import http.server, threading
@@ -502,7 +501,7 @@ async def main():
                            positions, electrodes, pop_params, args),
         'localhost', args.port
     ):
-        print(f"\n  Ready. Open browser to http://localhost:{http_port}/brain_viewer.html\n")
+        print(f"\n  Ready. Open browser to http://localhost:{http_port}/harness/viewer.html\n")
         await asyncio.Future()
 
 

@@ -1,5 +1,5 @@
 """
-probe.py -- Signal propagation probe. Stimulate neurons, watch the cascade.
+signal_probe.py -- Signal propagation probe. Stimulate neurons, watch the cascade.
 
 Not a test. Not a score. A picture of what the brain does.
 
@@ -8,10 +8,9 @@ Outputs:
   - Text cascade report (which regions, how far, how fast)
 
 Usage:
-    py probe.py --brain brains/test_v10.db
-    py probe.py --brain brains/test_v10.db --stim-region cortex --stim-count 20
-    py probe.py --brain brains/test_v10.db --stim-neuron 42 --cascade-ticks 200
-    py probe.py --brain brains/test_v10.db --compare-before-after --develop-ticks 10000
+    py probes/signal_probe.py --brain brains/test_v10.db
+    py probes/signal_probe.py --brain brains/test_v10.db --stim-region cortex
+    py probes/signal_probe.py --brain brains/test_v10.db --compare-before-after
 """
 import os, sys, argparse, json
 import numpy as np
@@ -19,7 +18,8 @@ import functools
 
 print = functools.partial(print, flush=True)
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+# Project root (parent of probes/)
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE)
 
 from engine.loader import load
