@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Brain Viewer — 2D Layers</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="sidebar">
+    <h2>Brain Viewer</h2>
+    <div class="nav-buttons">
+        <a href="/"><button>3D</button></a>
+        <button class="active">2D Layers</button>
+        <a href="/build"><button>Builder</button></a>
+    </div>
+
+    <h3>Version</h3>
+    <select id="versionSelect"></select>
+
+    <h3>Brain</h3>
+    <select id="brainSelect">
+        <option value="">— select brain —</option>
+    </select>
+    <div id="brainStats"></div>
+
+    <h3>Display</h3>
+    <div class="control-row">
+        <label>Size</label>
+        <input type="range" id="dotSize" min="2" max="16" value="6">
+        <span class="val" id="dotSizeVal">6</span>
+    </div>
+    <div class="control-row">
+        <input type="checkbox" id="showConns">
+        <label>Connections</label>
+    </div>
+    <div class="control-row" id="connControls" style="display:none">
+        <label>Top N</label>
+        <input type="range" id="connCount" min="10" max="1000" value="200">
+        <span class="val" id="connCountVal">200</span>
+    </div>
+    <div class="control-row">
+        <input type="checkbox" id="showLabels">
+        <label>Labels (bio)</label>
+    </div>
+
+    <h3>Color</h3>
+    <div class="control-row">
+        <select id="colorMode" style="width:100%">
+            <option value="ei">Excitatory / Inhibitory</option>
+            <option value="func">Function (bio only)</option>
+            <option value="layer">By layer</option>
+        </select>
+    </div>
+</div>
+
+<div id="tooltip"></div>
+
+<div id="layerBar">
+    <span class="layer-label">Layer:</span>
+    <input type="range" id="layerSlider" min="0" max="20" value="0">
+    <div id="layerInfo">
+        <span id="layerNum">0</span> / <span id="layerMax">20</span>
+        &nbsp;·&nbsp; <span id="layerCount">—</span> neurons
+    </div>
+</div>
+
+<canvas id="layerHist"></canvas>
+
+<div id="legend"></div>
+<div id="helpBar" style="bottom:100px">Scroll: zoom · Drag: pan · ←→: layer · Hover: inspect</div>
+
+<script type="module" src="view_2d.js"></script>
+</body>
+</html>

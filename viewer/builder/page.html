@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Brain Builder V8</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="canvas-wrap"></div>
+
+<!-- Left panel -->
+<div id="palette">
+    <h2>Brain Builder V8</h2>
+    <div class="nav-buttons">
+        <a href="/"><button>3D Viewer</button></a>
+        <button class="active">Builder</button>
+    </div>
+
+    <h3>Nodes</h3>
+    <div id="nodeList">
+        <button class="node-btn" data-type="RS">
+            <span class="dot" style="background:#4ade80"></span>
+            <span class="label">RS</span>
+            <span class="desc">Regular Spiking</span>
+        </button>
+        <button class="node-btn" data-type="FS">
+            <span class="dot" style="background:#ef4444"></span>
+            <span class="label">FS</span>
+            <span class="desc">Fast Spiking</span>
+        </button>
+        <button class="node-btn" data-type="IB">
+            <span class="dot" style="background:#fb923c"></span>
+            <span class="label">IB</span>
+            <span class="desc">Intrinsically Bursting</span>
+        </button>
+        <button class="node-btn" data-type="CH">
+            <span class="dot" style="background:#fbbf24"></span>
+            <span class="label">CH</span>
+            <span class="desc">Chattering</span>
+        </button>
+        <button class="node-btn" data-type="LTS">
+            <span class="dot" style="background:#94a3b8"></span>
+            <span class="label">LTS</span>
+            <span class="desc">Low-Threshold</span>
+        </button>
+    </div>
+
+    <h3>Paths</h3>
+    <div id="pathList">
+        <button class="path-btn" data-type="fixed">
+            <span class="dot" style="background:#cccccc"></span>
+            <span class="label">Fixed</span>
+            <span class="desc">Static connection</span>
+        </button>
+        <button class="path-btn" data-type="plastic">
+            <span class="dot" style="background:#60a5fa"></span>
+            <span class="label">Plastic</span>
+            <span class="desc">STDP learning</span>
+        </button>
+        <button class="path-btn" data-type="facilitating">
+            <span class="dot" style="background:#34d399"></span>
+            <span class="label">Facilitating</span>
+            <span class="desc">Strengthens with use</span>
+        </button>
+        <button class="path-btn" data-type="depressing">
+            <span class="dot" style="background:#fb923c"></span>
+            <span class="label">Depressing</span>
+            <span class="desc">Weakens with use</span>
+        </button>
+        <button class="path-btn" data-type="gated">
+            <span class="dot" style="background:#c084fc"></span>
+            <span class="label">Gated</span>
+            <span class="desc">Modulator-gated</span>
+        </button>
+    </div>
+
+    <h3>Selected</h3>
+    <div id="selectedInfo" class="info-box">Click a node or path to select</div>
+</div>
+
+<!-- Right panel -->
+<div id="config-panel">
+    <h3>Node Config</h3>
+    <div id="nodeConfig">
+        <div class="info-box" id="nodeConfigInfo">No node selected</div>
+        <div id="nodeConfigControls" style="display:none">
+            <div class="control-row">
+                <label>Type</label>
+                <span class="val" id="cfgNodeType">—</span>
+            </div>
+            <div class="control-row">
+                <label>Pos</label>
+                <span class="val" id="cfgNodePos">—</span>
+            </div>
+            <div class="control-row">
+                <label>Neurons</label>
+                <input type="range" id="cfgNeurons" min="10" max="100" value="50" step="5">
+                <span class="val" id="cfgNeuronsVal">50</span>
+            </div>
+        </div>
+    </div>
+
+    <h3>Path Config</h3>
+    <div id="pathConfig">
+        <div class="info-box" id="pathConfigInfo">No path selected</div>
+        <div id="pathConfigControls" style="display:none">
+            <div class="control-row">
+                <label>Type</label>
+                <span class="val" id="cfgPathType">—</span>
+            </div>
+            <div class="control-row">
+                <label>Weight</label>
+                <input type="range" id="cfgWeight" min="0.1" max="10" value="1" step="0.1">
+                <span class="val" id="cfgWeightVal">1.0</span>
+            </div>
+            <div class="control-row">
+                <label>Delay</label>
+                <input type="range" id="cfgDelay" min="1" max="20" value="1" step="1">
+                <span class="val" id="cfgDelayVal">1</span>
+            </div>
+            <!-- Type-specific params injected here -->
+            <div id="pathExtraParams"></div>
+        </div>
+    </div>
+
+    <h3>Save / Load</h3>
+    <div class="control-row">
+        <label>Name</label>
+        <input type="text" id="layoutName" value="sub_A" style="width:100%">
+    </div>
+    <button id="btnSave" style="width:100%;margin-top:6px">Save Sub-Component</button>
+    <button id="btnLoad" style="width:100%;margin-top:4px">Load Sub-Component</button>
+    <div id="savedList" style="margin-top:8px"></div>
+
+    <h3>Generate Brain</h3>
+    <div class="control-row">
+        <label>Name</label>
+        <input type="text" id="brainName" value="brain_v8" style="width:100%">
+    </div>
+    <button id="btnGenerate" style="width:100%;margin-top:6px">Generate</button>
+    <button id="btnGenerateRun" style="width:100%;margin-top:4px">Generate + Run</button>
+    <div id="genStatus" class="info-box" style="margin-top:8px"></div>
+
+    <button id="btnClear" style="width:100%;margin-top:12px;border-color:#ef4444;color:#ef4444">Clear All</button>
+</div>
+
+<!-- Bottom bar -->
+<div id="helpBar">
+    <span id="helpText">Click node type then click grid to place &middot; Click path type then Shift+click two nodes to connect &middot; Right-click: delete &middot; Drag: move node</span>
+</div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+}
+</script>
+<script type="module" src="main.js"></script>
+</body>
+</html>

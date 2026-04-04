@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Brain Viewer — 3D</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="container"></div>
+
+<div id="sidebar">
+    <h2>Brain Viewer</h2>
+    <div class="nav-buttons">
+        <button class="active">3D</button>
+        <a href="/2d"><button>2D Layers</button></a>
+        <a href="/build"><button>Builder</button></a>
+    </div>
+
+    <h3>Version</h3>
+    <select id="versionSelect"></select>
+
+    <h3>Brain</h3>
+    <select id="brainSelect">
+        <option value="">— select brain —</option>
+    </select>
+    <div id="brainStats"></div>
+
+    <h3>Display</h3>
+    <div class="control-row">
+        <label>Size</label>
+        <input type="range" id="dotSize" min="1" max="10" value="3">
+        <span class="val" id="dotSizeVal">3</span>
+    </div>
+    <div class="control-row">
+        <input type="checkbox" id="showConns">
+        <label>Connections</label>
+    </div>
+    <div class="control-row" id="connControls" style="display:none">
+        <label>Top N</label>
+        <input type="range" id="connCount" min="10" max="1000" value="200">
+        <span class="val" id="connCountVal">200</span>
+    </div>
+
+    <h3>Color</h3>
+    <div class="control-row">
+        <select id="colorMode" style="width:100%">
+            <option value="ei">Excitatory / Inhibitory</option>
+            <option value="func">Function (bio only)</option>
+            <option value="layer">By layer</option>
+        </select>
+    </div>
+
+    <h3>Simulate</h3>
+    <div class="control-row">
+        <select id="programSelect" style="width:100%">
+            <option value="">— select program —</option>
+        </select>
+    </div>
+    <div id="programDesc" class="stat" style="color:#888"></div>
+    <div class="control-row" style="gap:6px">
+        <button id="runBrain" style="width:48%">Run</button>
+        <button id="stopBrain" style="width:48%">Stop</button>
+    </div>
+    <div id="liveStatus" class="stat" style="color:#666">Not running</div>
+
+    <h3>Layer Filter</h3>
+    <div class="control-row">
+        <button id="layerAll" class="active" style="width:45%">All</button>
+        <button id="layerFilter" style="width:45%">Filter</button>
+    </div>
+    <div id="layerFilterControls" style="display:none">
+        <div class="control-row">
+            <label>Layer</label>
+            <input type="range" id="layerSlider" min="0" max="20" value="0">
+            <span class="val" id="layerVal">0</span>
+        </div>
+        <div class="control-row">
+            <label>Width</label>
+            <input type="range" id="layerWidth" min="1" max="10" value="3">
+            <span class="val" id="layerWidthVal">3</span>
+        </div>
+    </div>
+
+
+</div>
+
+<!-- Floating component panel — top right -->
+<div id="compPanel">
+    <div id="compHeader">
+        <span>Components</span>
+        <button id="compToggle" onclick="var p=document.getElementById('compPanel');p.classList.toggle('collapsed');this.textContent=p.classList.contains('collapsed')?'+':'−'">−</button>
+    </div>
+    <div id="compBody">
+
+        <details>
+            <summary class="cat-header cat-sensory">SENSORY <span class="cat-label">Input</span></summary>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#4ade80"></span> Sensor</div>
+                <div class="comp-what">Converts external stimulus into spikes</div>
+                <div class="comp-why">The entry point — nothing happens without input</div>
+            </div>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#22d3ee"></span> Relay</div>
+                <div class="comp-what">Carries signal between regions — long-range wiring</div>
+                <div class="comp-why">Without relays, clusters are isolated islands</div>
+            </div>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#a78bfa"></span> Filter</div>
+                <div class="comp-what">Sharpens signal locally, suppresses noise</div>
+                <div class="comp-why">Raw input is messy — filters extract the actual pattern</div>
+            </div>
+        </details>
+
+        <details>
+            <summary class="cat-header cat-reaction">REACTION <span class="cat-label">Processing</span></summary>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#f472b6"></span> Associator</div>
+                <div class="comp-what">Forms connections between co-active inputs — learning</div>
+                <div class="comp-why">The only way to go from reflex to experience</div>
+            </div>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#fb923c"></span> Modulator</div>
+                <div class="comp-what">Carries reward/punishment, shifts regional sensitivity</div>
+                <div class="comp-why">Without context, associations are meaningless — "good" vs "bad"</div>
+            </div>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#facc15"></span> Gate</div>
+                <div class="comp-what">Hardwired response path — fixed reaction, no learning</div>
+                <div class="comp-why">Some things can't wait to be learned — predator = flee NOW</div>
+            </div>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#60a5fa"></span> Integrator</div>
+                <div class="comp-what">Combines multiple signal streams into one decision</div>
+                <div class="comp-why">Real decisions need multiple inputs weighed together</div>
+            </div>
+        </details>
+
+        <details>
+            <summary class="cat-header cat-cognition">COGNITION <span class="cat-label">Higher</span></summary>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#e879f9"></span> Sustainer</div>
+                <div class="comp-what">Holds signal active without continuous input — working memory</div>
+                <div class="comp-why">Can't plan or reason if you forget mid-thought</div>
+            </div>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#f87171"></span> Predictor</div>
+                <div class="comp-what">Generates expected signal, outputs the error vs actual</div>
+                <div class="comp-why">Learning from surprise — the core of cortical computation</div>
+            </div>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#34d399"></span> Sequencer</div>
+                <div class="comp-what">Fires in ordered temporal chains — creates sequences</div>
+                <div class="comp-why">Language, planning, music — anything with an order</div>
+            </div>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#fbbf24"></span> Oscillator</div>
+                <div class="comp-what">Self-firing rhythm — internal clock signal</div>
+                <div class="comp-why">Coordinates timing across regions, attention, sleep</div>
+            </div>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#94a3b8"></span> Suppressor</div>
+                <div class="comp-what">Actively kills a strong signal — deliberate blocking</div>
+                <div class="comp-why">Impulse control, focus, "don't do the obvious thing"</div>
+            </div>
+        </details>
+
+        <details>
+            <summary class="cat-header cat-motor">MOTOR <span class="cat-label">Output</span></summary>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#c084fc"></span> Planner</div>
+                <div class="comp-what">Pre-motor — decides WHAT action before sending it</div>
+                <div class="comp-why">Acting without deciding is just twitching</div>
+            </div>
+            <div class="comp">
+                <div class="comp-name"><span class="comp-dot" style="background:#ef4444"></span> Commander</div>
+                <div class="comp-what">Final motor output — drives muscles/behavior</div>
+                <div class="comp-why">The whole point — thought becomes action</div>
+            </div>
+        </details>
+
+    </div>
+</div>
+
+<!-- Arena overlay (shown when arena data is streaming) -->
+<canvas id="arenaCanvas" width="280" height="280"></canvas>
+<div id="arenaStats"></div>
+
+<div id="tooltip"></div>
+<div id="layerIndicator" style="opacity:0"></div>
+<div id="helpBar">Left-drag: rotate · Right-drag: pan · Scroll: zoom · ↑↓: layer · Esc: show all</div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+}
+</script>
+<script type="module" src="view_3d.js"></script>
+</body>
+</html>

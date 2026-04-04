@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>LIFE Brain Harness</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #111; color: #ccc; font-family: monospace; overflow: hidden; }
+#canvas { position: absolute; top: 0; left: 0; }
+
+/* Panels */
+.panel {
+    position: absolute; z-index: 10;
+    background: rgba(0,0,0,0.75); padding: 10px; border-radius: 6px;
+    font-size: 12px; line-height: 1.6;
+    border: 1px solid rgba(255,255,255,0.05);
+}
+.panel-title { font-weight: bold; margin-bottom: 6px; color: #aaa; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+.label { color: #666; }
+.value { color: #ddd; }
+
+/* Brain state - top left */
+#brain-panel { top: 10px; left: 10px; min-width: 200px; }
+
+/* Neuron types - top right */
+#types-panel { top: 10px; right: 10px; min-width: 180px; }
+.type-bar {
+    display: inline-block; height: 6px; border-radius: 2px;
+    margin-right: 4px; vertical-align: middle; transition: width 0.1s;
+}
+
+/* Input - left middle */
+#input-panel { top: 200px; left: 10px; min-width: 240px; }
+
+/* Signals - right middle */
+#signals-panel { top: 200px; right: 10px; min-width: 200px; }
+
+/* Motor - right below signals */
+#motor-panel { top: 370px; right: 10px; min-width: 180px; }
+
+/* Buttons */
+.btn {
+    background: #222; color: #999; border: 1px solid #444; padding: 2px 8px;
+    border-radius: 3px; cursor: pointer; font-family: monospace; font-size: 11px;
+}
+.btn:hover { background: #333; color: #ccc; }
+.btn.active { background: #1a4a2a; color: #6f6; border-color: #3a7a4a; }
+
+/* Level bars */
+.level-bar {
+    display: inline-block; width: 80px; height: 6px; background: #1a1a1a;
+    border-radius: 3px; vertical-align: middle; margin-left: 4px;
+    overflow: hidden; border: 1px solid #222;
+}
+.level-fill { height: 100%; border-radius: 2px; transition: width 0.08s; }
+
+/* Signal bars - wider */
+.signal-row { margin: 4px 0; display: flex; align-items: center; gap: 6px; }
+.signal-label { width: 60px; color: #888; font-size: 11px; }
+.signal-bar {
+    flex: 1; height: 10px; background: #1a1a1a; border-radius: 4px;
+    overflow: hidden; border: 1px solid #222;
+}
+.signal-fill { height: 100%; border-radius: 3px; transition: width 0.1s; }
+.signal-val { width: 36px; text-align: right; color: #888; font-size: 10px; }
+
+/* Audio playlist */
+#playlist { max-height: 80px; overflow-y: auto; margin: 4px 0; }
+#playlist .track {
+    padding: 1px 4px; cursor: pointer; color: #555; font-size: 10px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#playlist .track:hover { color: #aaa; }
+#playlist .track.playing { color: #6f6; }
+
+/* Spectrum */
+#spectrum { width: 100%; height: 24px; margin-top: 4px; }
+
+/* Drag-drop overlay */
+#drop-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(26,74,42,0.3); z-index: 100;
+    border: 3px dashed #3a7a4a;
+    align-items: center; justify-content: center;
+    font-size: 20px; color: #6f6;
+}
+
+/* Cam preview */
+#cam-preview {
+    display: none; margin-top: 4px; border: 1px solid #333;
+    image-rendering: pixelated; width: 48px; height: 48px;
+}
+
+/* Bottom bar */
+#controls {
+    position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+    z-index: 10; background: rgba(0,0,0,0.75); padding: 6px 14px;
+    border-radius: 6px; font-size: 11px; border: 1px solid rgba(255,255,255,0.05);
+    display: flex; align-items: center; gap: 10px;
+}
+#controls input[type=range] { vertical-align: middle; width: 80px; }
+
+/* EEG */
+#eeg {
+    position: absolute; bottom: 50px; left: 10px; right: 10px; z-index: 10;
+    background: rgba(0,0,0,0.5); border-radius: 6px; height: 100px;
+}
+#eeg canvas { width: 100%; height: 100%; }
+
+/* Status overlay */
+#status {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 20; font-size: 18px; color: #555;
+}
+</style>
+</head>
+<body>
+<div id="status">Connecting...</div>
+<div id="drop-overlay">Drop audio files here</div>
+
+<!-- Brain State -->
+<div class="panel" id="brain-panel">
+    <div class="panel-title">Brain</div>
+    <div><span class="label">Tick </span><span class="value" id="tick">0</span></div>
+    <div><span class="label">Neurons </span><span class="value" id="n-neurons">-</span></div>
+    <div><span class="label">Synapses </span><span class="value" id="n-synapses">-</span></div>
+    <div><span class="label">Firing </span><span class="value" id="n-fired">0</span></div>
+    <div><span class="label">Tonic </span><span class="value" id="tonic">2.8</span></div>
+    <div><span class="label">Speed </span><span class="value" id="speed-val">1.0</span></div>
+</div>
+
+<!-- Neuron Types -->
+<div class="panel" id="types-panel"></div>
+
+<!-- Input -->
+<div class="panel" id="input-panel">
+    <div class="panel-title">Input</div>
+
+    <!-- Audio source -->
+    <div style="margin-bottom:6px">
+        <button class="btn" id="mic-btn" onclick="toggleMic()">Mic</button>
+        <button class="btn" id="files-btn" onclick="document.getElementById('file-input').click()">+ Files</button>
+        <button class="btn" id="play-btn" onclick="togglePlayback()" style="display:none">Play</button>
+        <button class="btn" id="skip-btn" onclick="skipTrack()" style="display:none">&gt;&gt;</button>
+        <button class="btn" id="shuffle-btn" onclick="toggleShuffle()" style="display:none">Seq</button>
+        <button class="btn" id="womb-btn" onclick="toggleWomb()">Womb</button>
+        <input type="file" id="file-input" accept="audio/*" multiple style="display:none"
+               onchange="handleFileSelect(this.files)">
+    </div>
+    <div id="womb-status" style="color:#444;font-size:9px;display:none">Low-pass 500Hz (amniotic filter)</div>
+    <div id="audio-status" style="color:#555;font-size:10px;margin-bottom:2px">No audio source</div>
+    <div class="level-bar" style="width:100%"><div class="level-fill" id="audio-fill" style="width:0%;background:#2a5"></div></div>
+    <canvas id="spectrum"></canvas>
+
+    <div id="playlist"></div>
+
+    <!-- Volume -->
+    <div style="margin-top:4px">
+        <span class="label">Vol </span>
+        <input type="range" id="vol-slider" min="0" max="1" step="0.05" value="0.5"
+               style="width:80px;vertical-align:middle" oninput="setVolume(this.value)">
+    </div>
+
+    <hr style="border:none;border-top:1px solid #222;margin:8px 0">
+
+    <!-- Camera -->
+    <div>
+        <button class="btn" id="cam-btn" onclick="toggleCam()">Cam</button>
+        <div class="level-bar"><div class="level-fill" id="cam-fill" style="width:0%;background:#47a"></div></div>
+    </div>
+    <canvas id="cam-preview"></canvas>
+
+    <hr style="border:none;border-top:1px solid #222;margin:8px 0">
+
+    <!-- Touch -->
+    <div>
+        <span class="label">Touch </span>
+        <span style="color:#555;font-size:10px">Shift+Click</span>
+        <input type="range" id="touch-str" min="1" max="30" step="1" value="15"
+               style="width:60px;vertical-align:middle">
+        <span id="touch-val" style="color:#666;font-size:10px">15</span>
+    </div>
+</div>
+
+<!-- Neuromodulator Signals -->
+<div class="panel" id="signals-panel">
+    <div class="panel-title">Signals</div>
+    <div class="signal-row">
+        <span class="signal-label" style="color:#e8a040">Surprise</span>
+        <div class="signal-bar"><div class="signal-fill" id="sig-surprise" style="width:0%;background:#e8a040"></div></div>
+        <span class="signal-val" id="sig-surprise-val">0</span>
+    </div>
+    <div style="color:#444;font-size:9px;margin:-2px 0 4px 66px">dopamine -- prediction error</div>
+
+    <div class="signal-row">
+        <span class="signal-label" style="color:#4a8ae8">Stability</span>
+        <div class="signal-bar"><div class="signal-fill" id="sig-stability" style="width:100%;background:#4a8ae8"></div></div>
+        <span class="signal-val" id="sig-stability-val">1.0</span>
+    </div>
+    <div style="color:#444;font-size:9px;margin:-2px 0 4px 66px">serotonin -- learning rate</div>
+
+    <div class="signal-row">
+        <span class="signal-label" style="color:#e84040">Arousal</span>
+        <div class="signal-bar"><div class="signal-fill" id="sig-arousal" style="width:0%;background:#e84040"></div></div>
+        <span class="signal-val" id="sig-arousal-val">0</span>
+    </div>
+    <div style="color:#444;font-size:9px;margin:-2px 0 4px 66px">norepinephrine -- tonic boost</div>
+</div>
+
+<!-- Motor Output -->
+<div class="panel" id="motor-panel">
+    <div class="panel-title">Motor Output</div>
+    <canvas id="motor-canvas" width="160" height="32"></canvas>
+    <div style="color:#444;font-size:9px;margin-top:2px">8 decoded channels</div>
+</div>
+
+<!-- Controls -->
+<div id="controls">
+    <button class="btn" onclick="send({action:'pause'})">Pause</button>
+    <span class="label">Speed</span>
+    <input type="range" id="speed-slider" min="0.1" max="10" step="0.1" value="1.0"
+           oninput="send({action:'speed',value:parseFloat(this.value)})">
+    <span class="label">Tonic</span>
+    <input type="range" id="tonic-slider" min="0" max="5" step="0.1" value="2.8"
+           oninput="send({action:'tonic',value:parseFloat(this.value)})">
+</div>
+
+<!-- EEG -->
+<div id="eeg"><canvas id="eeg-canvas"></canvas></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let ws = null;
+let neurons = [];
+let nNeurons = 0;
+let typeColors = {};
+let typeCounts = {};
+let electrodes = {};
+let scene, camera, renderer, controls;
+let neuronPoints = null;
+let neuronColors = null;
+let neuronSizes = null;
+let baseColors = null;
+let baseSizeArr = null;
+let glowDecay = null;
+let maxCapacity = 0;    // pre-allocated buffer size for growth
+let eegHistory = {};
+const EEG_LEN = 300;
+const GLOW_DECAY = 0.85;
+const GLOW_BOOST = 1.0;
+const BASE_SIZE = 2.0;
+const GLOW_SIZE = 6.0;
+const ELECTRODE_SIZE = 3.0;
+
+// Audio shared state
+let audioCtx = null;
+let analyser = null;
+let gainNode = null;
+let wombFilter = null;   // BiquadFilterNode low-pass for womb mode
+let wombMode = false;
+const AUDIO_CHANNELS = 16;
+const WOMB_CUTOFF = 500;  // Hz — amniotic fluid muffles above this
+
+// Mic state
+let micActive = false;
+let micStream = null;
+let micSource = null;
+
+// File playback state
+let playlist = [];       // [{name, arrayBuffer}]
+let playlistIdx = -1;
+let fileSource = null;   // AudioBufferSourceNode
+let playbackActive = false;
+let shuffleMode = false;
+
+// Camera state
+let camActive = false;
+let camStream = null;
+let videoEl = null;
+let camSmall = null;
+let camSmallCtx = null;
+const VISUAL_SIZE = 8;
+const VISUAL_CHANNELS = VISUAL_SIZE * VISUAL_SIZE;
+
+// Spectrum history for mini-visualizer
+let spectrumData = new Float32Array(AUDIO_CHANNELS);
+
+// ============================================================
+// WEBSOCKET
+// ============================================================
+function connect() {
+    const port = location.port ? parseInt(location.port) + 1 : 8891;
+    ws = new WebSocket('ws://localhost:' + port);
+    ws.onopen = () => {
+        document.getElementById('status').style.display = 'none';
+    };
+    ws.onclose = () => {
+        document.getElementById('status').textContent = 'Disconnected. Reconnecting...';
+        document.getElementById('status').style.display = 'block';
+        setTimeout(connect, 2000);
+    };
+    ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        if (data.type === 'config') onConfig(data);
+        else if (data.type === 'frame') onFrame(data);
+        else if (data.type === 'growth') onGrowth(data);
+    };
+}
+
+function send(obj) {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+// ============================================================
+// AUDIO ENGINE (shared between mic and file playback)
+// ============================================================
+function ensureAudioCtx() {
+    if (!audioCtx) {
+        audioCtx = new AudioContext();
+
+        // Womb low-pass filter (always in chain, bypassed when cutoff=20000)
+        wombFilter = audioCtx.createBiquadFilter();
+        wombFilter.type = 'lowpass';
+        wombFilter.frequency.value = wombMode ? WOMB_CUTOFF : 20000;
+        wombFilter.Q.value = 0.707;  // Butterworth response
+
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = parseFloat(document.getElementById('vol-slider').value);
+
+        // Chain: source -> wombFilter -> analyser -> gain -> speakers
+        // Sources connect to wombFilter (not analyser directly)
+        wombFilter.connect(analyser);
+        analyser.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function toggleWomb() {
+    wombMode = !wombMode;
+    const btn = document.getElementById('womb-btn');
+    const status = document.getElementById('womb-status');
+    if (wombMode) {
+        btn.classList.add('active');
+        status.style.display = '';
+        if (wombFilter) wombFilter.frequency.value = WOMB_CUTOFF;
+    } else {
+        btn.classList.remove('active');
+        status.style.display = 'none';
+        if (wombFilter) wombFilter.frequency.value = 20000;
+    }
+}
+
+function setVolume(val) {
+    if (gainNode) gainNode.gain.value = parseFloat(val);
+}
+
+function getAudioFFT() {
+    if (!analyser) return null;
+    const raw = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(raw);
+    const binsPerChannel = Math.floor(raw.length / AUDIO_CHANNELS);
+    const fft = [];
+    let peak = 0;
+    for (let ch = 0; ch < AUDIO_CHANNELS; ch++) {
+        let sum = 0;
+        for (let b = 0; b < binsPerChannel; b++) {
+            sum += raw[ch * binsPerChannel + b];
+        }
+        const v = (sum / binsPerChannel) / 255;
+        fft.push(v);
+        spectrumData[ch] = v;
+        if (v > peak) peak = v;
+    }
+    document.getElementById('audio-fill').style.width = Math.round(peak * 100) + '%';
+    return fft;
+}
+
+// ============================================================
+// MICROPHONE
+// ============================================================
+async function toggleMic() {
+    const btn = document.getElementById('mic-btn');
+    if (!micActive) {
+        // Stop file playback if active
+        if (playbackActive) stopPlayback();
+
+        try {
+            ensureAudioCtx();
+            micStream = await navigator.mediaDevices.getUserMedia({audio: true});
+            micSource = audioCtx.createMediaStreamSource(micStream);
+            micSource.connect(wombFilter);
+            micActive = true;
+            btn.classList.add('active');
+            document.getElementById('audio-status').textContent = 'Mic live';
+        } catch(e) {
+            console.error('Mic error:', e);
+            document.getElementById('audio-status').textContent = 'Mic failed: ' + e.message;
+        }
+    } else {
+        micActive = false;
+        if (micSource) { micSource.disconnect(); micSource = null; }
+        if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+        btn.classList.remove('active');
+        document.getElementById('audio-status').textContent = 'No audio source';
+        document.getElementById('audio-fill').style.width = '0%';
+        send({action: 'audio', fft: new Array(AUDIO_CHANNELS).fill(0)});
+    }
+}
+
+// ============================================================
+// FILE PLAYBACK
+// ============================================================
+function handleFileSelect(files) {
+    if (!files.length) return;
+    const startIdx = playlist.length;
+    let loaded = 0;
+    for (const file of files) {
+        const reader = new FileReader();
+        const name = file.name;
+        reader.onload = (e) => {
+            playlist.push({name: name, buffer: e.target.result});
+            loaded++;
+            if (loaded === files.length) {
+                updatePlaylistUI();
+                // Show playback controls
+                document.getElementById('play-btn').style.display = '';
+                document.getElementById('skip-btn').style.display = '';
+                document.getElementById('shuffle-btn').style.display = '';
+                // Auto-start if nothing playing
+                if (!playbackActive && !micActive) {
+                    playlistIdx = startIdx;
+                    startPlayback();
+                }
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+}
+
+function updatePlaylistUI() {
+    const el = document.getElementById('playlist');
+    el.innerHTML = '';
+    for (let i = 0; i < playlist.length; i++) {
+        const div = document.createElement('div');
+        div.className = 'track' + (i === playlistIdx ? ' playing' : '');
+        div.textContent = playlist[i].name;
+        div.onclick = () => { playlistIdx = i; startPlayback(); };
+        el.appendChild(div);
+    }
+}
+
+async function startPlayback() {
+    if (!playlist.length) return;
+    if (playlistIdx < 0 || playlistIdx >= playlist.length) playlistIdx = 0;
+
+    // Stop mic if active
+    if (micActive) {
+        micActive = false;
+        if (micSource) { micSource.disconnect(); micSource = null; }
+        if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+        document.getElementById('mic-btn').classList.remove('active');
+    }
+
+    // Stop current file source
+    if (fileSource) {
+        try { fileSource.stop(); } catch(e) {}
+        fileSource.disconnect();
+        fileSource = null;
+    }
+
+    ensureAudioCtx();
+
+    const item = playlist[playlistIdx];
+    try {
+        const audioBuf = await audioCtx.decodeAudioData(item.buffer.slice(0));
+        fileSource = audioCtx.createBufferSource();
+        fileSource.buffer = audioBuf;
+        fileSource.connect(wombFilter);
+        fileSource.onended = () => {
+            if (!playbackActive) return;
+            // Advance playlist
+            if (shuffleMode) {
+                playlistIdx = Math.floor(Math.random() * playlist.length);
+            } else {
+                playlistIdx = (playlistIdx + 1) % playlist.length;
+            }
+            startPlayback();
+        };
+        fileSource.start();
+        playbackActive = true;
+        document.getElementById('play-btn').textContent = 'Stop';
+        document.getElementById('play-btn').classList.add('active');
+        document.getElementById('audio-status').textContent = item.name;
+        updatePlaylistUI();
+    } catch(e) {
+        console.error('Decode error:', e);
+        document.getElementById('audio-status').textContent = 'Error: ' + e.message;
+        // Skip bad file
+        playlistIdx = (playlistIdx + 1) % playlist.length;
+        if (playbackActive) setTimeout(() => startPlayback(), 100);
+    }
+}
+
+function stopPlayback() {
+    playbackActive = false;
+    if (fileSource) {
+        try { fileSource.stop(); } catch(e) {}
+        fileSource.disconnect();
+        fileSource = null;
+    }
+    document.getElementById('play-btn').textContent = 'Play';
+    document.getElementById('play-btn').classList.remove('active');
+    document.getElementById('audio-status').textContent = 'Stopped';
+    document.getElementById('audio-fill').style.width = '0%';
+    send({action: 'audio', fft: new Array(AUDIO_CHANNELS).fill(0)});
+}
+
+function togglePlayback() {
+    if (playbackActive) {
+        stopPlayback();
+    } else {
+        if (playlist.length) startPlayback();
+    }
+}
+
+function skipTrack() {
+    if (!playlist.length) return;
+    if (shuffleMode) {
+        playlistIdx = Math.floor(Math.random() * playlist.length);
+    } else {
+        playlistIdx = (playlistIdx + 1) % playlist.length;
+    }
+    if (playbackActive) startPlayback();
+}
+
+function toggleShuffle() {
+    shuffleMode = !shuffleMode;
+    const btn = document.getElementById('shuffle-btn');
+    btn.textContent = shuffleMode ? 'Shuf' : 'Seq';
+    if (shuffleMode) btn.classList.add('active');
+    else btn.classList.remove('active');
+}
+
+// ============================================================
+// DRAG & DROP
+// ============================================================
+document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    document.getElementById('drop-overlay').style.display = 'flex';
+});
+document.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget === null) {
+        document.getElementById('drop-overlay').style.display = 'none';
+    }
+});
+document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    document.getElementById('drop-overlay').style.display = 'none';
+    const files = [];
+    for (const item of e.dataTransfer.files) {
+        if (item.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|m4a|aac|webm)$/i.test(item.name)) {
+            files.push(item);
+        }
+    }
+    if (files.length) handleFileSelect(files);
+});
+
+// ============================================================
+// CAMERA
+// ============================================================
+async function toggleCam() {
+    const btn = document.getElementById('cam-btn');
+    const preview = document.getElementById('cam-preview');
+    if (!camActive) {
+        try {
+            camStream = await navigator.mediaDevices.getUserMedia({video: true});
+            videoEl = document.createElement('video');
+            videoEl.srcObject = camStream;
+            videoEl.play();
+            camSmall = document.createElement('canvas');
+            camSmall.width = VISUAL_SIZE;
+            camSmall.height = VISUAL_SIZE;
+            camSmallCtx = camSmall.getContext('2d');
+            camActive = true;
+            btn.classList.add('active');
+            preview.style.display = 'block';
+        } catch(e) {
+            console.error('Camera error:', e);
+        }
+    } else {
+        camActive = false;
+        send({action: 'visual', pixels: new Array(VISUAL_CHANNELS).fill(0)});
+        if (camStream) camStream.getTracks().forEach(t => t.stop());
+        videoEl = null;
+        btn.classList.remove('active');
+        preview.style.display = 'none';
+        document.getElementById('cam-fill').style.width = '0%';
+    }
+}
+
+function getVisualPixels() {
+    if (!camSmallCtx || !videoEl || videoEl.readyState < 2) return null;
+    camSmallCtx.drawImage(videoEl, 0, 0, VISUAL_SIZE, VISUAL_SIZE);
+    const imgData = camSmallCtx.getImageData(0, 0, VISUAL_SIZE, VISUAL_SIZE);
+    const pixels = [];
+    let total = 0;
+    for (let i = 0; i < VISUAL_CHANNELS; i++) {
+        const r = imgData.data[i * 4];
+        const g = imgData.data[i * 4 + 1];
+        const b = imgData.data[i * 4 + 2];
+        const gray = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+        pixels.push(gray);
+        total += gray;
+    }
+    const pCtx = preview.getContext('2d');
+    preview.width = 48; preview.height = 48;
+    pCtx.drawImage(videoEl, 0, 0, 48, 48);
+    document.getElementById('cam-fill').style.width = Math.round((total / VISUAL_CHANNELS) * 100) + '%';
+    return pixels;
+}
+
+// ============================================================
+// I/O STREAMING (~30fps)
+// ============================================================
+setInterval(() => {
+    if (micActive || playbackActive) {
+        const fft = getAudioFFT();
+        if (fft) send({action: 'audio', fft: fft});
+    }
+    if (camActive) {
+        const px = getVisualPixels();
+        if (px) send({action: 'visual', pixels: px});
+    }
+    drawSpectrum();
+}, 33);
+
+// ============================================================
+// TOUCH PROBE (Shift+Click)
+// ============================================================
+function onCanvasClick(event) {
+    if (!event.shiftKey || !neuronPoints) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.params.Points.threshold = 15;
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(neuronPoints);
+    if (intersects.length > 0) {
+        const idx = intersects[0].index;
+        const strength = parseFloat(document.getElementById('touch-str').value);
+        send({action: 'touch', idx: idx, strength: strength});
+        glowDecay[idx] = 2.0;
+    }
+}
+
+// Touch slider display
+document.addEventListener('DOMContentLoaded', () => {
+    const ts = document.getElementById('touch-str');
+    if (ts) ts.oninput = () => {
+        document.getElementById('touch-val').textContent = ts.value;
+    };
+});
+
+// ============================================================
+// SPECTRUM MINI-VISUALIZER
+// ============================================================
+function drawSpectrum() {
+    const canvas = document.getElementById('spectrum');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.parentElement ? canvas.parentElement.clientWidth - 20 : 220;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const barW = w / AUDIO_CHANNELS;
+    for (let i = 0; i < AUDIO_CHANNELS; i++) {
+        const v = spectrumData[i];
+        const barH = v * h;
+        // Green gradient
+        const g = Math.round(100 + v * 155);
+        ctx.fillStyle = `rgb(30,${g},50)`;
+        ctx.fillRect(i * barW + 1, h - barH, barW - 2, barH);
+    }
+}
+
+// ============================================================
+// CONFIG: BUILD 3D SCENE
+// ============================================================
+function onConfig(data) {
+    nNeurons = data.n_neurons;
+    neurons = data.neurons;
+    typeColors = data.type_colors;
+    typeCounts = data.type_counts;
+    electrodes = data.electrodes || {};
+
+    document.getElementById('n-neurons').textContent = nNeurons.toLocaleString();
+    document.getElementById('n-synapses').textContent = data.n_synapses.toLocaleString();
+
+    // EEG history per type
+    for (const t of Object.keys(typeColors)) {
+        eegHistory[t] = new Float32Array(EEG_LEN);
+    }
+
+    // Neuron type legend
+    const typesDiv = document.getElementById('types-panel');
+    typesDiv.innerHTML = '<div class="panel-title">Neuron Types</div>';
+    const typeLabels = {RS:'Regular Spiking', FS:'Fast Spiking (inh)', IB:'Intrinsic Burst',
+                        CH:'Chattering', LTS:'Low-Threshold (inh)'};
+    for (const [t, color] of Object.entries(typeColors)) {
+        const c = `rgb(${Math.round(color[0]*255)},${Math.round(color[1]*255)},${Math.round(color[2]*255)})`;
+        const count = typeCounts[t] || 0;
+        typesDiv.innerHTML += `<div style="margin:2px 0">
+            <span class="type-bar" id="bar-${t}" style="background:${c};width:0px"></span>
+            <span style="color:${c};font-size:11px">${t}</span>
+            <span style="color:#444;font-size:10px">${typeLabels[t] || t}</span>
+            <span style="color:#555;font-size:10px">(${count})</span>
+            <span style="color:#777;font-size:10px" id="fire-${t}">0</span>
+        </div>`;
+    }
+
+    buildScene();
+}
+
+function buildScene() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111111);
+
+    let cx = 0, cy = 0, cz = 0;
+    for (const n of neurons) { cx += n.x; cy += n.y; cz += n.z; }
+    cx /= nNeurons; cy /= nNeurons; cz /= nNeurons;
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 5000);
+    camera.position.set(cx + 400, cy + 300, cz + 400);
+
+    renderer = new THREE.WebGLRenderer({ canvas: document.createElement('canvas'), antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.insertBefore(renderer.domElement, document.body.firstChild);
+    renderer.domElement.id = 'canvas';
+    renderer.domElement.addEventListener('click', onCanvasClick);
+
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.target.set(cx, cy, cz);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.1;
+    controls.update();
+
+    const audioSet = new Set(electrodes.audio || []);
+    const visualSet = new Set(electrodes.visual || []);
+    const motorSet = new Set(electrodes.motor || []);
+
+    // Pre-allocate 4x capacity for runtime growth
+    maxCapacity = nNeurons * 4;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(maxCapacity * 3);
+    neuronColors = new Float32Array(maxCapacity * 3);
+    baseColors = new Float32Array(maxCapacity * 3);
+    neuronSizes = new Float32Array(maxCapacity);
+    baseSizeArr = new Float32Array(maxCapacity);
+    glowDecay = new Float32Array(maxCapacity);
+
+    for (let i = 0; i < nNeurons; i++) {
+        const n = neurons[i];
+        positions[i*3] = n.x;
+        positions[i*3+1] = n.y;
+        positions[i*3+2] = n.z;
+
+        const c = n.color;
+        const dim = n.inh ? 0.4 : 0.5;
+        baseColors[i*3] = c[0] * dim;
+        baseColors[i*3+1] = c[1] * dim;
+        baseColors[i*3+2] = c[2] * dim;
+        neuronColors[i*3] = baseColors[i*3];
+        neuronColors[i*3+1] = baseColors[i*3+1];
+        neuronColors[i*3+2] = baseColors[i*3+2];
+
+        let size = n.inh ? BASE_SIZE * 0.7 : BASE_SIZE;
+        if (audioSet.has(i) || visualSet.has(i) || motorSet.has(i)) {
+            size = ELECTRODE_SIZE;
+        }
+        baseSizeArr[i] = size;
+        neuronSizes[i] = size;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(neuronColors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(neuronSizes, 1));
+
+    const material = new THREE.ShaderMaterial({
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        vertexShader: `
+            attribute float size;
+            varying vec3 vColor;
+            void main() {
+                vColor = color;
+                vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+                gl_PointSize = size * (300.0 / -mvPos.z);
+                gl_Position = projectionMatrix * mvPos;
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vColor;
+            void main() {
+                float d = length(gl_PointCoord - 0.5) * 2.0;
+                if (d > 1.0) discard;
+                float alpha = 1.0 - d * d;
+                gl_FragColor = vec4(vColor, alpha * 0.8);
+            }
+        `,
+    });
+
+    neuronPoints = new THREE.Points(geometry, material);
+    geometry.setDrawRange(0, nNeurons);  // only render active neurons
+    scene.add(neuronPoints);
+
+    const axisHelper = new THREE.AxesHelper(50);
+    axisHelper.position.set(cx - 200, cy - 200, cz - 200);
+    scene.add(axisHelper);
+    scene.add(new THREE.AmbientLight(0x222222));
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+}
+
+// ============================================================
+// FRAME UPDATE
+// ============================================================
+// GROWTH EVENT -- new neurons born during runtime
+// ============================================================
+function onGrowth(data) {
+    if (!neuronPoints) return;
+
+    const newNeurons = data.new_neurons || [];
+    const geo = neuronPoints.geometry;
+    const posArr = geo.attributes.position.array;
+    const colArr = geo.attributes.color.array;
+    const sizeArr = geo.attributes.size.array;
+
+    for (const nn of newNeurons) {
+        if (nNeurons >= maxCapacity) break;  // buffer full
+        const i = nNeurons;
+        posArr[i*3] = nn.x;
+        posArr[i*3+1] = nn.y;
+        posArr[i*3+2] = nn.z;
+
+        const c = nn.color;
+        const dim = nn.inh ? 0.4 : 0.5;
+        baseColors[i*3] = c[0] * dim;
+        baseColors[i*3+1] = c[1] * dim;
+        baseColors[i*3+2] = c[2] * dim;
+        colArr[i*3] = c[0];  // born bright
+        colArr[i*3+1] = c[1];
+        colArr[i*3+2] = c[2];
+
+        const size = nn.inh ? BASE_SIZE * 0.7 : BASE_SIZE;
+        baseSizeArr[i] = size;
+        sizeArr[i] = size + GLOW_SIZE;  // glow on birth
+        glowDecay[i] = 1.0;
+
+        neurons.push(nn);
+        nNeurons++;
+    }
+
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+    geo.attributes.size.needsUpdate = true;
+    geo.setDrawRange(0, nNeurons);
+
+    // Update HUD
+    document.getElementById('n-neurons').textContent = (data.n_neurons || nNeurons).toLocaleString();
+    document.getElementById('n-synapses').textContent = (data.n_synapses || 0).toLocaleString();
+}
+
+// ============================================================
+function onFrame(data) {
+    if (!neuronPoints) return;
+
+    document.getElementById('tick').textContent = data.tick.toLocaleString();
+    document.getElementById('n-fired').textContent = data.n_fired;
+    document.getElementById('tonic').textContent = (data.tonic || 2.8).toFixed(1);
+    document.getElementById('speed-val').textContent = (data.speed || 1.0).toFixed(1);
+
+    // Update live counts if present (from growing brain)
+    if (data.n_neurons) document.getElementById('n-neurons').textContent = data.n_neurons.toLocaleString();
+    if (data.n_synapses) document.getElementById('n-synapses').textContent = data.n_synapses.toLocaleString();
+
+    // Decay glow
+    for (let i = 0; i < nNeurons; i++) {
+        glowDecay[i] *= GLOW_DECAY;
+    }
+
+    // Boost fired neurons
+    if (data.fired) {
+        for (const fi of data.fired) {
+            glowDecay[fi] = GLOW_BOOST;
+        }
+    }
+
+    // Update colors and sizes
+    const colors = neuronPoints.geometry.attributes.color.array;
+    const sizes = neuronPoints.geometry.attributes.size.array;
+    for (let i = 0; i < nNeurons; i++) {
+        const g = glowDecay[i];
+        if (g > 0.05) {
+            const glow = Math.min(g, 1.0);
+            colors[i*3]   = baseColors[i*3]   + (1.0 - baseColors[i*3])   * glow;
+            colors[i*3+1] = baseColors[i*3+1] + (0.95 - baseColors[i*3+1]) * glow;
+            colors[i*3+2] = baseColors[i*3+2] + (0.6 - baseColors[i*3+2]) * glow * 0.5;
+            sizes[i] = baseSizeArr[i] + GLOW_SIZE * glow;
+        } else {
+            colors[i*3]   = baseColors[i*3];
+            colors[i*3+1] = baseColors[i*3+1];
+            colors[i*3+2] = baseColors[i*3+2];
+            sizes[i] = baseSizeArr[i];
+            glowDecay[i] = 0;
+        }
+    }
+    neuronPoints.geometry.attributes.color.needsUpdate = true;
+    neuronPoints.geometry.attributes.size.needsUpdate = true;
+
+    // Type bars and EEG
+    const typeFire = data.type_fire || {};
+    for (const [t, color] of Object.entries(typeColors)) {
+        const count = typeFire[t] || 0;
+        const total = typeCounts[t] || 1;
+        const pct = count / total;
+        const barEl = document.getElementById('bar-' + t);
+        const fireEl = document.getElementById('fire-' + t);
+        if (barEl) barEl.style.width = Math.round(pct * 100) + 'px';
+        if (fireEl) fireEl.textContent = count;
+        if (eegHistory[t]) {
+            eegHistory[t].copyWithin(0, 1);
+            eegHistory[t][EEG_LEN - 1] = pct;
+        }
+    }
+
+    // Neuromodulator signals
+    if (data.signals) {
+        const s = data.signals;
+        // Surprise: sensory_ema value, show as proportion (cap at 1.0 for bar)
+        const surpriseNorm = Math.min(1.0, s.surprise * 10);  // scale for visibility
+        document.getElementById('sig-surprise').style.width = Math.round(surpriseNorm * 100) + '%';
+        document.getElementById('sig-surprise-val').textContent = s.surprise.toFixed(3);
+
+        // Stability: learning_rate_scale 0.2-1.0
+        const stabNorm = (s.stability - 0.2) / 0.8;  // normalize to 0-1
+        document.getElementById('sig-stability').style.width = Math.round(stabNorm * 100) + '%';
+        document.getElementById('sig-stability-val').textContent = s.stability.toFixed(2);
+
+        // Arousal: 0-1 direct
+        document.getElementById('sig-arousal').style.width = Math.round(s.arousal * 100) + '%';
+        document.getElementById('sig-arousal-val').textContent = s.arousal.toFixed(3);
+    }
+
+    drawMotor(data.motor_decoded || data.motor || []);
+    drawEEG();
+}
+
+// ============================================================
+// MOTOR OUTPUT
+// ============================================================
+function drawMotor(motor) {
+    const canvas = document.getElementById('motor-canvas');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!motor.length) return;
+
+    const n = motor.length;
+    const barW = w / n;
+    const maxVal = Math.max(0.01, ...motor);
+
+    for (let i = 0; i < n; i++) {
+        const val = motor[i] / maxVal;
+        const barH = val * (h - 4);
+        const r = Math.round(30 + val * 225);
+        const g = Math.round(20 + val * 150);
+        const b = Math.round(10 + val * 30);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(i * barW + 1, h - barH - 2, barW - 2, barH);
+        ctx.fillStyle = '#555';
+        ctx.font = '8px monospace';
+        ctx.fillText(i.toString(), i * barW + barW/2 - 3, 9);
+    }
+}
+
+// ============================================================
+// EEG TRACES
+// ============================================================
+function drawEEG() {
+    const canvas = document.getElementById('eeg-canvas');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.parentElement.clientWidth;
+    const h = canvas.height = canvas.parentElement.clientHeight;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalAlpha = 0.8;
+
+    const typeNames = Object.keys(typeColors);
+    const nTypes = typeNames.length;
+    const rowH = h / nTypes;
+
+    for (let ri = 0; ri < nTypes; ri++) {
+        const t = typeNames[ri];
+        const color = typeColors[t];
+        const hist = eegHistory[t];
+        if (!hist) continue;
+
+        const y0 = ri * rowH;
+        ctx.strokeStyle = `rgb(${Math.round(color[0]*255)},${Math.round(color[1]*255)},${Math.round(color[2]*255)})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+
+        for (let i = 0; i < EEG_LEN; i++) {
+            const x = (i / EEG_LEN) * w;
+            const val = Math.min(hist[i] / 0.3, 1.0);
+            const y = y0 + rowH - val * rowH * 0.8 - rowH * 0.1;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.font = '9px monospace';
+        ctx.fillText(t, 4, y0 + 10);
+    }
+}
+
+// ============================================================
+// RENDER LOOP
+// ============================================================
+function animate() {
+    requestAnimationFrame(animate);
+    if (controls) controls.update();
+    if (renderer && scene && camera) {
+        renderer.render(scene, camera);
+    }
+}
+
+// ============================================================
+// START
+// ============================================================
+connect();
+</script>
+</body>
+</html>

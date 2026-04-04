@@ -1,0 +1,100 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #111; color: #ddd; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+
+#canvas-wrap {
+    position: absolute;
+    left: 220px; right: 220px; top: 0; bottom: 32px;
+}
+
+/* Left panel */
+#palette {
+    position: absolute; left: 0; top: 0; bottom: 32px; width: 220px;
+    background: #1a1a1a; padding: 12px; overflow-y: auto;
+    border-right: 1px solid #333;
+    scrollbar-width: none;
+}
+#palette::-webkit-scrollbar { display: none; }
+
+h2 { font-size: 16px; margin-bottom: 8px; }
+h3 { font-size: 12px; color: #888; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 1px; }
+
+.nav-buttons { display: flex; gap: 4px; }
+.nav-buttons button, .nav-buttons a button {
+    flex: 1; padding: 4px; background: #333; color: #aaa; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;
+}
+.nav-buttons button.active { background: #555; color: #fff; }
+.nav-buttons a { text-decoration: none; flex: 1; }
+
+/* Node type buttons */
+.node-btn, .path-btn {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; padding: 6px 8px; margin: 2px 0;
+    background: #252525; border: 1px solid #333; border-radius: 4px;
+    color: #ddd; cursor: pointer; font-size: 12px; text-align: left;
+}
+.node-btn:hover, .path-btn:hover { background: #333; }
+.node-btn.selected, .path-btn.selected { border-color: #fff; background: #333; }
+.node-btn .dot, .path-btn .dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.node-btn .label, .path-btn .label {
+    font-weight: bold; min-width: 28px;
+}
+.node-btn .desc, .path-btn .desc {
+    color: #666; font-size: 10px; margin-left: auto;
+}
+
+/* Right panel */
+#config-panel {
+    position: absolute; right: 0; top: 0; bottom: 32px; width: 220px;
+    background: #1a1a1a; padding: 12px; overflow-y: auto;
+    border-left: 1px solid #333;
+    scrollbar-width: none;
+}
+#config-panel::-webkit-scrollbar { display: none; }
+
+.control-row {
+    display: flex; align-items: center; gap: 6px; margin: 4px 0;
+    font-size: 12px;
+}
+.control-row label { min-width: 50px; color: #888; }
+.control-row input[type=range] { flex: 1; }
+.val { color: #aaa; font-size: 11px; min-width: 24px; text-align: right; }
+
+button {
+    padding: 6px 10px; background: #333; color: #ddd; border: 1px solid #555;
+    border-radius: 4px; cursor: pointer; font-size: 12px;
+}
+button:hover { background: #444; }
+
+.info-box {
+    font-size: 11px; color: #666; padding: 4px;
+    min-height: 20px;
+}
+
+input[type=text] {
+    background: #252525; border: 1px solid #444; color: #ddd;
+    padding: 4px 6px; border-radius: 3px; font-size: 12px; width: 100%;
+}
+
+/* Saved list items */
+.saved-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 6px; margin: 2px 0;
+    background: #252525; border: 1px solid #333; border-radius: 3px;
+    font-size: 11px; cursor: pointer;
+}
+.saved-item:hover { background: #333; }
+.saved-item .name { flex: 1; }
+.saved-item .load-btn {
+    padding: 1px 6px; font-size: 10px; background: #444; border: none;
+    border-radius: 2px; color: #aaa; cursor: pointer;
+}
+
+/* Bottom bar */
+#helpBar {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 32px;
+    background: #1a1a1a; border-top: 1px solid #333;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: #555;
+}
