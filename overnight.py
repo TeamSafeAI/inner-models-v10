@@ -134,6 +134,35 @@ def audio_to_fft_bands(samples, n_bands=16, window=64):
     return bands
 
 
+def womb_filter(bands, sr=1000, window=64, cutoff=500, n_bands=16):
+    """Apply amniotic fluid low-pass to FFT bands.
+
+    In the womb, sound passes through fluid and tissue. Frequencies above
+    ~500 Hz are heavily attenuated. Mother's voice comes through as pitch
+    and rhythm, not consonants. Music is bass and midrange only.
+
+    Applies a smooth roll-off (not a brick wall) matching measured
+    intra-uterine acoustic transfer functions.
+    """
+    nyquist = sr / 2.0  # 500 Hz at sr=1000
+    band_width = nyquist / n_bands  # ~31.25 Hz per band
+
+    # Build attenuation curve: gentle roll-off starting at cutoff/3
+    rolloff_start = cutoff / 3.0  # ~167 Hz: start attenuating
+    atten = np.ones(n_bands, dtype=np.float64)
+    for b in range(n_bands):
+        center_freq = (b + 0.5) * band_width
+        if center_freq > rolloff_start:
+            # -6 dB/octave roll-off (tissue + fluid absorption)
+            octaves_above = np.log2(center_freq / rolloff_start)
+            atten[b] = max(0.02, 10 ** (-6 * octaves_above / 20))
+
+    # Apply to all frames
+    if bands.ndim == 2:
+        return bands * atten[np.newaxis, :]
+    return bands * atten
+
+
 # ================================================================
 # Regional neuron mapping + brainstem drive
 # ================================================================
@@ -554,6 +583,7 @@ def run_overnight(args):
     print(f"  Brain: {args.brain}")
     print(f"  Cycles: {args.cycles}")
     print(f"  Growth: {'ON' if args.growth else 'OFF'}")
+    print(f"  Womb filter: {'ON' if args.womb else 'OFF'}")
     print(f"  Sleep ticks: {args.sleep_ticks} ({args.sleep_ticks/100:.0f}s wall @ 100t/s)")
     print(f"  Output: {run_dir}")
     print(f"{'='*60}")
@@ -575,8 +605,8 @@ def run_overnight(args):
     # Heartbeat: the mother's heart drives the brainstem rhythmically.
     # 120 BPM = 2 Hz, half-sine pulse, 60ms wide, 2.5 mA peak.
     bs_indices = get_region_indices(brain, 'BS')
-    heartbeat = Heartbeat(bs_indices, brain.n, bpm=120, amplitude=2.5,
-                          pulse_width=60, variability=0.05)
+    heartbeat = Heartbeat(bs_indices, brain.n, bpm=args.heartbeat_bpm,
+                          amplitude=2.5, pulse_width=60, variability=0.05)
     print(f"  Heartbeat: {heartbeat.bpm} BPM, {len(bs_indices)} brainstem neurons, "
           f"{heartbeat.amplitude} mA peak")
 
@@ -588,6 +618,8 @@ def run_overnight(args):
         print(f"  Voice clips: {len(voice_files)} files")
         for fname, samples in voice_files:
             bands = audio_to_fft_bands(samples, n_bands=16, window=64)
+            if args.womb:
+                bands = womb_filter(bands)
             voice_bands.append((fname, bands))
     else:
         print(f"  No voice clips found in {voice_dir}")
@@ -600,6 +632,8 @@ def run_overnight(args):
         print(f"  Classical music: {len(music_files)} files")
         for fname, samples in music_files:
             bands = audio_to_fft_bands(samples, n_bands=16, window=64)
+            if args.womb:
+                bands = womb_filter(bands)
             music_bands.append((fname, bands))
     else:
         print(f"  No classical music -- generating synthetic tonal patterns")
@@ -607,6 +641,8 @@ def run_overnight(args):
         synth = generate_synthetic_music(n_songs=10, duration_s=25, rng=rng_music)
         for fname, samples in synth:
             bands = audio_to_fft_bands(samples, n_bands=16, window=64)
+            if args.womb:
+                bands = womb_filter(bands)
             music_bands.append((fname, bands))
             print(f"    {fname}: {bands.shape[0]} frames")
 
@@ -834,6 +870,12 @@ def main():
                    help='Snapshot interval in seconds (default: 1800=30min)')
     p.add_argument('--practice', action='store_true',
                    help='Practice mode: 2 cycles, 1 track, short sleep, snapshot every cycle')
+    p.add_argument('--womb', action='store_true', default=True,
+                   help='Womb mode: low-pass filter on audio (default: on)')
+    p.add_argument('--no-womb', dest='womb', action='store_false',
+                   help='Disable womb audio filter (full spectrum)')
+    p.add_argument('--heartbeat-bpm', type=int, default=120,
+                   help='Heartbeat rate in BPM (fetal range: 108-138)')
     args = p.parse_args()
     if args.practice:
         args.cycles = 2
