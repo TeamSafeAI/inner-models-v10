@@ -26,25 +26,38 @@ STABILITY_MIN_SCALE = 0.2        # minimum learning rate scale
 STABILITY_EVAL_INTERVAL = 100    # ticks between evaluations
 
 # Arousal (norepinephrine analog)
+# Biology: locus coeruleus HABITUATES to predictable sustained input.
+# Arousal tracks an EMA of input deltas (expected variation). Only spikes
+# when current delta exceeds the adapted expectation (novelty detection).
+# Predictable music -> delta_ema rises -> threshold rises -> arousal decays.
+# Novel input -> delta exceeds expectation -> arousal spikes -> habituates again.
 AROUSAL_DECAY = 0.995            # per-tick decay (~140 tick half-life)
 AROUSAL_GAIN = 2.5               # max mA boost at full arousal (1.0)
-AROUSAL_SPIKE_SCALE = 0.4        # input delta -> arousal increment
-AROUSAL_DELTA_THRESHOLD = 0.1    # minimum input change to trigger arousal
+AROUSAL_SPIKE_SCALE = 0.4        # novelty ratio -> arousal increment
+AROUSAL_DELTA_THRESHOLD = 2.0    # ratio: delta must exceed EMA by this factor
+AROUSAL_DELTA_FLOOR = 0.05       # absolute minimum delta to spike (prevents noise)
+AROUSAL_HABITUATION_ALPHA = 0.01 # delta EMA adaptation rate (~100 tick tau)
 
 # Neuromodulatory current
 NEUROMOD_DECAY = 0.995           # current decay per tick (~200ms tau)
 NEUROMOD_GAIN = 3.0              # uA per unit magnitude per unit sensitivity
 
-# Cortisol (sustained stress)
-# Biology: HPA axis. Minutes to build, hours to clear.
-# "Sustained threat -- stop growing, survive."
-CORTISOL_AROUSAL_THRESHOLD = 0.5   # A must exceed this to accumulate stress
-CORTISOL_ONSET_TICKS = 200         # sustained ticks before cortisol rises
-CORTISOL_RISE_RATE = 0.002         # per-tick rise (~500 ticks to 1.0)
-CORTISOL_DECAY = 0.9995            # per-tick decay (~1400 tick half-life)
-CORTISOL_COUNTER_DECAY = 0.95      # onset counter decay when A drops (~14 tick half-life)
-CORTISOL_GROWTH_SUPPRESSION = 0.8  # growth reduced 80% at level=1.0
-CORTISOL_SURVIVAL_REDUCTION = 300  # ticks removed from survival window at level=1.0
+# Cortisol (sustained stress -- allostatic load model)
+# Biology: HPA axis responds to sustained overload RELATIVE TO adapted baseline.
+# Predictable stimulation (music) doesn't sustain cortisol. Unpredictable,
+# escalating input does. The brain maintains its own model of "normal" and
+# reacts when pushed beyond it.
+# Fetal: placenta blocks 80-90% of maternal cortisol (buffer < 1.0).
+CORTISOL_EMA_ALPHA = 0.005          # sensory baseline adaptation (~200 tick tau)
+CORTISOL_VAR_ALPHA = 0.005          # variance baseline adaptation (same timescale)
+CORTISOL_Z_THRESHOLD = 2.0          # std devs above adapted mean to count as overload
+CORTISOL_ONSET_TICKS = 200          # sustained overload ticks before cortisol rises
+CORTISOL_RISE_RATE = 0.002          # per-tick rise (~500 ticks to 1.0)
+CORTISOL_DECAY = 0.9995             # per-tick decay (~1400 tick half-life)
+CORTISOL_COUNTER_DECAY = 0.95       # onset counter decay when not overloaded
+CORTISOL_PLACENTAL_BUFFER = 0.15    # fetal: placenta blocks ~85% (set 1.0 post-birth)
+CORTISOL_GROWTH_SUPPRESSION = 0.8   # growth reduced 80% at level=1.0
+CORTISOL_SURVIVAL_REDUCTION = 300   # ticks removed from survival window at level=1.0
 
 # Oxytocin (safety / bonding)
 # Biology: released during calm, familiar, predictable contexts.

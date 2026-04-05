@@ -118,7 +118,18 @@ REGIONS = {
         'attractant': 0.6,         # moderate -- receives external input
         'local_density': 1.0,
         'birth_order': 1,          # early -- sensory input develops early
-        'description': 'Sensory input. Chemical + mechanical. Connects to sensor_map.',
+        'description': 'Auditory sensory input. FFT bands from audio.',
+    },
+    'somatosensory': {
+        'center': (350, 150, 350),  # lateral, anterior -- adjacent to sensory but distinct
+        'radius': 70,
+        'n_fraction': 0.08,
+        'exc_ratio': 0.70,
+        'neuron_types': {'rs': 0.55, 'fs': 0.25, 'lts': 0.15, 'ib': 0.05},
+        'attractant': 0.7,         # moderate -- receives body input
+        'local_density': 1.2,      # somatosensory has good local recurrence
+        'birth_order': 0,          # EARLIEST -- touch before hearing in fetal development
+        'description': 'Somatosensory. Touch, pressure, proprioception. Body awareness.',
     },
 }
 
@@ -952,18 +963,19 @@ def main():
         regions['sensory']['n_fraction'] = 0.08
     elif args.config == 'overnight':
         # Full-featured balanced brain for overnight development.
-        # Larger sensory (audio input), strong thalamic relay,
-        # everything represented. Designed for growth experiments.
-        regions['cortex']['n_fraction'] = 0.30
+        # Audio sensory, somatosensory (touch), strong thalamic relay,
+        # everything represented. Designed for womb growth experiments.
+        regions['cortex']['n_fraction'] = 0.28
         regions['cortex']['radius'] = 160
-        regions['hippocampus']['n_fraction'] = 0.15
-        regions['basal_ganglia']['n_fraction'] = 0.12
+        regions['hippocampus']['n_fraction'] = 0.14
+        regions['basal_ganglia']['n_fraction'] = 0.11
         regions['brainstem']['n_fraction'] = 0.10
         regions['thalamus']['n_fraction'] = 0.12
         regions['thalamus']['attractant'] = 2.0   # strong relay
-        regions['sensory']['n_fraction'] = 0.12    # bigger -- audio input
-        regions['sensory']['radius'] = 85          # wider to fit more neurons
-        regions['amygdala']['n_fraction'] = 0.09
+        regions['sensory']['n_fraction'] = 0.10    # audio input
+        regions['sensory']['radius'] = 85
+        regions['somatosensory']['n_fraction'] = 0.08  # touch/pressure/proprioception
+        regions['amygdala']['n_fraction'] = 0.07
 
     # Auto-calculate contact radius if not specified
     if args.contact_radius is None:

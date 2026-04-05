@@ -169,7 +169,7 @@ def get_frame(brain, neuron_types, tick, fired, motor_fire):
         'motor': motor_fire.tolist(),
         # Neuromodulator signals
         'signals': {
-            'surprise': round(float(getattr(brain, 'sensory_ema', 0)), 4),
+            'surprise': round(float(getattr(brain, 'surprise', 0)), 4),
             'stability': round(float(getattr(brain, 'learning_rate_scale', 1)), 4),
             'arousal': round(float(getattr(brain, 'arousal', 0)), 4),
             'cortisol': round(float(getattr(brain, 'cortisol', 0)), 4),

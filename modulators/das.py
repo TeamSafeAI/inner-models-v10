@@ -26,9 +26,11 @@ from modulators.constants import (
     STABILITY_TARGET_VAR, STABILITY_VAR_EMA_ALPHA, STABILITY_SENSITIVITY,
     STABILITY_MIN_SCALE, STABILITY_EVAL_INTERVAL,
     AROUSAL_DECAY, AROUSAL_GAIN, AROUSAL_SPIKE_SCALE, AROUSAL_DELTA_THRESHOLD,
+    AROUSAL_DELTA_FLOOR, AROUSAL_HABITUATION_ALPHA,
     NEUROMOD_GAIN,
-    CORTISOL_AROUSAL_THRESHOLD, CORTISOL_ONSET_TICKS, CORTISOL_RISE_RATE,
-    CORTISOL_DECAY, CORTISOL_COUNTER_DECAY,
+    CORTISOL_EMA_ALPHA, CORTISOL_VAR_ALPHA, CORTISOL_Z_THRESHOLD,
+    CORTISOL_ONSET_TICKS, CORTISOL_RISE_RATE,
+    CORTISOL_DECAY, CORTISOL_COUNTER_DECAY, CORTISOL_PLACENTAL_BUFFER,
     OXYTOCIN_AROUSAL_CEILING, OXYTOCIN_SURPRISE_CEILING, OXYTOCIN_ONSET_TICKS,
     OXYTOCIN_RISE_RATE, OXYTOCIN_DECAY, OXYTOCIN_LR_BOOST,
 )
@@ -61,21 +63,25 @@ S_CONFIG = {
 A_CONFIG = {
     'trigger': {
         'type': 'input_delta',
-        'delta_threshold': AROUSAL_DELTA_THRESHOLD,  # 0.1
-        'spike_scale': AROUSAL_SPIKE_SCALE,           # 0.4
-        'decay': AROUSAL_DECAY,                       # 0.995
+        'delta_threshold': AROUSAL_DELTA_THRESHOLD,      # 2.0 (ratio, not absolute)
+        'delta_floor': AROUSAL_DELTA_FLOOR,               # 0.05 (absolute minimum)
+        'habituation_alpha': AROUSAL_HABITUATION_ALPHA,   # 0.01 (~100 tick adaptation)
+        'spike_scale': AROUSAL_SPIKE_SCALE,               # 0.4
+        'decay': AROUSAL_DECAY,                            # 0.995
     },
 }
 
 CORTISOL_CONFIG = {
     'trigger': {
-        'type': 'sustained_signal',
-        'watch_signal': 'A',                          # monitors arousal
-        'watch_threshold': CORTISOL_AROUSAL_THRESHOLD, # 0.5
-        'onset_ticks': CORTISOL_ONSET_TICKS,           # 200
-        'rise_rate': CORTISOL_RISE_RATE,               # 0.002
-        'decay': CORTISOL_DECAY,                       # 0.9995
-        'counter_decay': CORTISOL_COUNTER_DECAY,       # 0.95
+        'type': 'allostatic_load',
+        'ema_alpha': CORTISOL_EMA_ALPHA,               # 0.005 baseline adaptation
+        'var_alpha': CORTISOL_VAR_ALPHA,                # 0.005 variance adaptation
+        'z_threshold': CORTISOL_Z_THRESHOLD,            # 2.0 std devs
+        'onset_ticks': CORTISOL_ONSET_TICKS,            # 200
+        'rise_rate': CORTISOL_RISE_RATE,                # 0.002
+        'decay': CORTISOL_DECAY,                        # 0.9995
+        'counter_decay': CORTISOL_COUNTER_DECAY,        # 0.95
+        'buffer': CORTISOL_PLACENTAL_BUFFER,            # 0.15 (fetal)
     },
 }
 
@@ -111,6 +117,7 @@ def init_signals(brain):
 
     # Brain attributes read by runner.py and external code
     brain.sensory_ema = 0.0
+    brain.surprise = 0.0
     brain.surprise_threshold = SURPRISE_THRESHOLD
     brain._prev_sensory_energy = 0.0
     brain.learning_rate_scale = 1.0

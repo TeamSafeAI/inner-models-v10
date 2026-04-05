@@ -178,13 +178,14 @@ CODE_TO_REGION = {v: k for k, v in REGION_CODES.items()}
 
 # Spatial definitions (used for backfill of old brains + wiring)
 REGION_DEFS = {
-    'brainstem':     {'center': (250, 150, 100), 'radius': 80,  'code': 'BS'},
-    'sensory':       {'center': (250, 100, 350), 'radius': 85,  'code': 'SN'},
-    'thalamus':      {'center': (250, 250, 250), 'radius': 60,  'code': 'TH'},
-    'amygdala':      {'center': (350, 400, 200), 'radius': 60,  'code': 'AM'},
-    'hippocampus':   {'center': (150, 400, 250), 'radius': 80,  'code': 'HP'},
-    'basal_ganglia': {'center': (250, 300, 250), 'radius': 70,  'code': 'BG'},
-    'cortex':        {'center': (250, 250, 400), 'radius': 160, 'code': 'CX'},
+    'brainstem':      {'center': (250, 150, 100), 'radius': 80,  'code': 'BS'},
+    'sensory':        {'center': (250, 100, 350), 'radius': 85,  'code': 'SN'},
+    'somatosensory':  {'center': (350, 150, 350), 'radius': 70,  'code': 'SM'},
+    'thalamus':       {'center': (250, 250, 250), 'radius': 60,  'code': 'TH'},
+    'amygdala':       {'center': (350, 400, 200), 'radius': 60,  'code': 'AM'},
+    'hippocampus':    {'center': (150, 400, 250), 'radius': 80,  'code': 'HP'},
+    'basal_ganglia':  {'center': (250, 300, 250), 'radius': 70,  'code': 'BG'},
+    'cortex':         {'center': (250, 250, 400), 'radius': 160, 'code': 'CX'},
 }
 
 # Regional excitability: membrane bias per region.
@@ -194,6 +195,7 @@ REGION_EXCITABILITY = {
     'TH': 2.5,   # thalamus: relay, near threshold
     'AM': 2.5,   # amygdala: fast emotional, responsive
     'SN': 2.0,   # sensory: quiet at rest, lights up with input
+    'SM': 2.0,   # somatosensory: quiet at rest, touch drives it
     'HP': 1.8,   # hippocampus: needs cortical/thalamic drive
     'BG': 1.5,   # basal_ganglia: inhibitory gating
     'CX': 1.5,   # cortex: needs thalamic relay to activate
@@ -262,6 +264,149 @@ class Heartbeat:
         """Update after neurogenesis changes brain size."""
         self.bs_indices = bs_indices
         self.n_total = n_total
+
+
+class WombTouch:
+    """Fetal somatosensory input -- what a baby feels in the womb.
+
+    Touch and proprioception develop BEFORE hearing (~8 weeks vs ~20 weeks).
+    A fetus in the womb feels:
+
+    1. Amniotic pressure: constant, enveloping, low-level. The baseline of
+       being held. Uniform across all touch neurons.
+
+    2. Heartbeat vibration: mother's heartbeat transmitted through fluid as
+       a pressure wave felt on skin. Rhythmic, synchronized with brainstem
+       heartbeat but experienced as TOUCH, not neural drive.
+
+    3. Breathing rhythm: slow pressure oscillation (~15 breaths/min) as the
+       uterus gently compresses/releases with diaphragm movement.
+
+    4. Maternal movement: episodic vestibular/pressure changes. Walking is
+       rhythmic (~2 Hz), turning/bending is irregular. Random, gentle.
+
+    5. Self-movement: fetal kicks, stretches, hiccups. Brief, sharp,
+       localized. The first experience of agency -- "I moved and felt it."
+
+    The key property: most of this input is PREDICTABLE and SOOTHING.
+    The arousal trigger should see small deltas (familiar patterns),
+    letting oxytocin build. Novel self-movements create small surprises.
+    """
+
+    def __init__(self, sm_indices, n_total, heartbeat_bpm=120,
+                 breath_rate=15, seed=42):
+        self.sm_indices = sm_indices
+        self.n_total = n_total
+        self.n_sm = len(sm_indices)
+        self.rng = np.random.RandomState(seed)
+
+        # Heartbeat vibration (synced to brainstem heartbeat)
+        self.hb_period = int(60000 / heartbeat_bpm)  # ms per beat
+        self.hb_phase = 0
+        self.hb_amplitude = 1.5   # felt pressure, gentler than brainstem drive
+
+        # Breathing rhythm
+        self.breath_period = int(60000 / breath_rate)  # ~4000ms at 15/min
+        self.breath_phase = 0
+        self.breath_amplitude = 0.8
+
+        # Amniotic pressure (constant baseline)
+        self.ambient_pressure = 0.3
+
+        # Maternal movement state
+        self.maternal_active = False
+        self.maternal_timer = 0
+        self.maternal_amplitude = 0.0
+
+        # Self-movement state (fetal kicks)
+        self.kick_timer = 0
+        self.kick_target = None  # which SM neurons get the kick
+
+        # Assign touch channels to neuron subgroups
+        # Split SM neurons into functional zones
+        if self.n_sm > 0:
+            n_per = max(1, self.n_sm // 5)
+            self.zone_pressure = sm_indices[:n_per]           # ambient
+            self.zone_heartbeat = sm_indices[n_per:2*n_per]   # cardiac vibration
+            self.zone_breathing = sm_indices[2*n_per:3*n_per] # respiratory
+            self.zone_vestibular = sm_indices[3*n_per:4*n_per] # maternal movement
+            self.zone_proprio = sm_indices[4*n_per:]           # self-movement
+
+    def current(self):
+        """Generate per-neuron touch current for this tick."""
+        I = np.zeros(self.n_total, dtype=np.float64)
+        if self.n_sm == 0:
+            return I
+
+        # 1. Ambient amniotic pressure (constant, all touch neurons)
+        I[self.sm_indices] += self.ambient_pressure
+
+        # 2. Heartbeat vibration (half-sine pulse, like Heartbeat but as touch)
+        pulse_width = 80  # slightly wider than brainstem pulse (felt, not driven)
+        if self.hb_phase < pulse_width:
+            t_norm = self.hb_phase / pulse_width
+            pulse = self.hb_amplitude * np.sin(np.pi * t_norm)
+            I[self.zone_heartbeat] += pulse
+            # Heartbeat is felt everywhere faintly
+            I[self.sm_indices] += pulse * 0.2
+
+        self.hb_phase += 1
+        if self.hb_phase >= self.hb_period:
+            self.hb_phase = 0
+
+        # 3. Breathing rhythm (slow sine wave)
+        breath_t = self.breath_phase / self.breath_period
+        breath_signal = self.breath_amplitude * (0.5 + 0.5 * np.sin(2 * np.pi * breath_t))
+        I[self.zone_breathing] += breath_signal
+        # Breathing is felt as gentle global pressure change
+        I[self.sm_indices] += breath_signal * 0.15
+
+        self.breath_phase = (self.breath_phase + 1) % self.breath_period
+
+        # 4. Maternal movement (episodic, random onset/offset)
+        if not self.maternal_active:
+            # Random chance of starting movement (~once per 30s on average)
+            if self.rng.random() < 0.00003:  # ~1 per 33K ticks
+                self.maternal_active = True
+                self.maternal_timer = self.rng.randint(2000, 8000)  # 2-8s duration
+                self.maternal_amplitude = self.rng.uniform(0.5, 2.0)
+        else:
+            # Walking-like oscillation at ~2 Hz during movement
+            walk_signal = self.maternal_amplitude * np.sin(2 * np.pi * 2.0 * self.maternal_timer / 1000)
+            I[self.zone_vestibular] += abs(walk_signal)
+            self.maternal_timer -= 1
+            if self.maternal_timer <= 0:
+                self.maternal_active = False
+
+        # 5. Self-movement / fetal kick (brief, sharp, localized)
+        if self.kick_timer <= 0:
+            # Random kicks (~once per 20s on average)
+            if self.rng.random() < 0.00005:  # ~1 per 20K ticks
+                self.kick_timer = self.rng.randint(50, 200)  # 50-200ms kick
+                # Pick a random subset of proprioceptive neurons
+                n_kick = max(1, len(self.zone_proprio) // 3)
+                self.kick_target = self.rng.choice(
+                    self.zone_proprio, size=n_kick, replace=False)
+        else:
+            # Active kick -- sharp input to localized neurons
+            kick_strength = 3.0 * np.sin(np.pi * self.kick_timer / 100)
+            I[self.kick_target] += max(0, kick_strength)
+            self.kick_timer -= 1
+
+        return I
+
+    def update_indices(self, sm_indices, n_total):
+        """Update after neurogenesis changes brain size."""
+        self.sm_indices = sm_indices
+        self.n_total = n_total
+        self.n_sm = len(sm_indices)
+        if self.n_sm > 0:
+            n_per = max(1, self.n_sm // 5)
+            self.zone_pressure = sm_indices[:n_per]
+            self.zone_heartbeat = sm_indices[n_per:2*n_per]
+            self.zone_breathing = sm_indices[2*n_per:3*n_per]
+            self.zone_vestibular = sm_indices[3*n_per:4*n_per]
+            self.zone_proprio = sm_indices[4*n_per:]
 
 
 def backfill_region_tags(brain):
@@ -506,7 +651,8 @@ def take_snapshot(brain, sensory_indices, rng, total_ticks, cycle,
         f.write(f"Brain: {brain.n} neurons, {len(brain.synapses)} synapses\n\n")
 
         f.write(f"Signals:\n")
-        f.write(f"  D (surprise/ema):  {brain.sensory_ema:.6f}\n")
+        f.write(f"  D (surprise):      {getattr(brain, 'surprise', 0.0):.6f}\n")
+        f.write(f"  D (ema):           {brain.sensory_ema:.6f}\n")
         f.write(f"  A (arousal):       {brain.arousal:.6f}\n")
         f.write(f"  S (learning rate): {brain.learning_rate_scale:.4f}\n")
         f.write(f"  C (cortisol):      {getattr(brain, 'cortisol', 0.0):.6f}\n")
@@ -612,6 +758,16 @@ def run_overnight(args):
     print(f"  Heartbeat: {heartbeat.bpm} BPM, {len(bs_indices)} brainstem neurons, "
           f"{heartbeat.amplitude} mA peak")
 
+    # Somatosensory: what the fetus FEELS in the womb.
+    # Touch develops before hearing. Always on -- the baby always feels.
+    sm_indices = get_region_indices(brain, 'SM')
+    if len(sm_indices) > 0:
+        womb_touch = WombTouch(sm_indices, brain.n, heartbeat_bpm=args.heartbeat_bpm)
+        print(f"  Somatosensory: {len(sm_indices)} neurons (touch/pressure/proprioception)")
+    else:
+        womb_touch = None
+        print(f"  Somatosensory: no SM neurons (old brain, touch disabled)")
+
     # Load voice clips
     voice_dir = os.path.join(BASE, 'media', 'womb_phase')
     voice_files = load_audio_files(voice_dir)
@@ -652,7 +808,7 @@ def run_overnight(args):
     log_path = os.path.join(run_dir, 'development.csv')
     with open(log_path, 'w') as f:
         f.write('cycle,tick,wall_s,neurons,synapses,cycle_spikes,'
-                'surprise_ema,stability,arousal,cortisol,oxytocin,'
+                'surprise,surprise_ema,stability,arousal,cortisol,oxytocin,'
                 'born,culled,new_synapses,'
                 'sleep_replay,sleep_sprouted,sleep_drifted\n')
 
@@ -684,6 +840,13 @@ def run_overnight(args):
             excit = REGION_EXCITABILITY.get(code, 1.0) if code else 1.0
             brain.excitability[ni] = excit
 
+    def base_current():
+        """Heartbeat + somatosensory touch. The constant background of being alive."""
+        I = heartbeat.current()
+        if womb_touch is not None:
+            I += womb_touch.current()
+        return I
+
     silence_ticks = int(args.silence * 1000)  # seconds -> ticks (1 tick = 1ms)
     n_music = min(args.tracks, len(music_bands))
     n_voice = min(args.tracks, len(voice_bands))
@@ -710,12 +873,12 @@ def run_overnight(args):
         print(f"  Brain: {brain.n}N, {len(brain.synapses)}S ({sc_str})")
         cortisol = getattr(brain, 'cortisol', 0.0)
         oxytocin = getattr(brain, 'oxytocin', 0.0)
-        print(f"  DAS: D={brain.sensory_ema:.4f} A={brain.arousal:.4f} S={brain.learning_rate_scale:.3f} "
+        print(f"  DAS: D={getattr(brain, 'surprise', 0.0):.4f} A={brain.arousal:.4f} S={brain.learning_rate_scale:.3f} "
               f"C={cortisol:.4f} O={oxytocin:.4f}")
 
-        # Phase 1: WARM UP (1000 ticks, heartbeat only)
+        # Phase 1: WARM UP (1000 ticks, heartbeat + touch)
         for t in range(1000):
-            fired = brain.tick(heartbeat.current())
+            fired = brain.tick(base_current())
             cycle_spikes += len(fired)
             total_ticks += 1
 
@@ -727,7 +890,7 @@ def run_overnight(args):
                 fname, bands = music_bands[mi]
                 file_spikes = 0
                 for frame in range(bands.shape[0]):
-                    I = heartbeat.current()
+                    I = base_current()
                     I += bands_to_current(bands[frame:frame+1], sensory_indices,
                                           brain.n, audio_gain=args.audio_gain)
                     fired = brain.tick(I)
@@ -742,18 +905,20 @@ def run_overnight(args):
                     if stats.get('neurons_born', 0) > 0:
                         heartbeat.update_indices(get_region_indices(brain, 'BS'), brain.n)
                         sensory_indices = find_sensory_neurons(brain)
+                        if womb_touch is not None:
+                            womb_touch.update_indices(get_region_indices(brain, 'SM'), brain.n)
 
                 g = cycle_growth
                 gstr = f", +{g['neurons_born']}N +{g['synapses_added']}S" if g['neurons_born'] else ''
                 c_val = getattr(brain, 'cortisol', 0.0)
                 o_val = getattr(brain, 'oxytocin', 0.0)
                 print(f"    M[{track_i+1:2d}] {fname}: {file_spikes} spk, "
-                      f"D={brain.sensory_ema:.3f} A={brain.arousal:.3f} "
+                      f"D={getattr(brain, 'surprise', 0.0):.3f} A={brain.arousal:.3f} "
                       f"C={c_val:.3f} O={o_val:.3f}{gstr}")
 
-            # --- SILENCE (heartbeat only) ---
+            # --- SILENCE (heartbeat + touch) ---
             for t in range(silence_ticks):
-                fired = brain.tick(heartbeat.current())
+                fired = brain.tick(base_current())
                 cycle_spikes += len(fired)
                 total_ticks += 1
 
@@ -763,7 +928,7 @@ def run_overnight(args):
                 fname, bands = voice_bands[vi]
                 file_spikes = 0
                 for frame in range(bands.shape[0]):
-                    I = heartbeat.current()
+                    I = base_current()
                     I += bands_to_current(bands[frame:frame+1], sensory_indices,
                                           brain.n, audio_gain=args.audio_gain)
                     fired = brain.tick(I)
@@ -778,18 +943,20 @@ def run_overnight(args):
                     if stats.get('neurons_born', 0) > 0:
                         heartbeat.update_indices(get_region_indices(brain, 'BS'), brain.n)
                         sensory_indices = find_sensory_neurons(brain)
+                        if womb_touch is not None:
+                            womb_touch.update_indices(get_region_indices(brain, 'SM'), brain.n)
 
                 born = cycle_growth['neurons_born']
                 born_str = f', +{born}N' if born else ''
                 c_val = getattr(brain, 'cortisol', 0.0)
                 o_val = getattr(brain, 'oxytocin', 0.0)
                 print(f"    V[{track_i+1:2d}] {fname}: {file_spikes} spk, "
-                      f"D={brain.sensory_ema:.3f} A={brain.arousal:.3f} "
+                      f"D={getattr(brain, 'surprise', 0.0):.3f} A={brain.arousal:.3f} "
                       f"C={c_val:.3f} O={o_val:.3f}{born_str}")
 
-            # --- SILENCE (heartbeat only) ---
+            # --- SILENCE (heartbeat + touch) ---
             for t in range(silence_ticks):
-                fired = brain.tick(heartbeat.current())
+                fired = brain.tick(base_current())
                 cycle_spikes += len(fired)
                 total_ticks += 1
 
@@ -809,7 +976,8 @@ def run_overnight(args):
             o_end = getattr(brain, 'oxytocin', 0.0)
             f.write(f"{cycle},{total_ticks},{elapsed:.0f},"
                     f"{brain.n},{len(brain.synapses)},{cycle_spikes},"
-                    f"{brain.sensory_ema:.6f},{brain.learning_rate_scale:.4f},{brain.arousal:.6f},"
+                    f"{getattr(brain, 'surprise', 0.0):.6f},{brain.sensory_ema:.6f},"
+                    f"{brain.learning_rate_scale:.4f},{brain.arousal:.6f},"
                     f"{c_end:.6f},{o_end:.6f},"
                     f"{cycle_growth['neurons_born']},{cycle_growth['neurons_culled']},"
                     f"{cycle_growth['synapses_added']},"

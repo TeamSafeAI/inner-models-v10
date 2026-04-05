@@ -867,12 +867,19 @@ class Brain:
 
         rng = np.random.RandomState(seed or 0)
 
-        # Phase 1: Noise replay
+        # Phase 1: Noise replay with thalamic gating
+        # During sleep, thalamus attenuates sensory relay (~90% reduction).
+        # Internal regions get full noise -- connectivity shapes it into replay.
+        # Not a hard gate: loud enough "noise" can still leak through,
+        # but normal replay doesn't register as sensory arousal.
         replay_spikes = 0
         if ticks > 0:
             noise = np.zeros(self.n, dtype=np.float64)
+            sensory_gate = getattr(self, 'sensory_mask', None)
             for t in range(ticks):
                 noise[:] = rng.randn(self.n) * noise_amplitude
+                if sensory_gate is not None:
+                    noise[sensory_gate] *= 0.1  # thalamic gating
                 fired = self.tick(external_I=noise)
                 replay_spikes += len(fired)
 

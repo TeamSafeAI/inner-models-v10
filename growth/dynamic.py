@@ -37,10 +37,8 @@ def dynamic_growth(brain, rng=None, post_birth_fn=None):
     cortisol = getattr(brain, 'cortisol', 0.0)
     oxytocin = getattr(brain, 'oxytocin', 0.0)
 
-    # Compute surprise level (same metric the signal uses)
-    surprise_level = 0.0
-    if brain.sensory_ema > 1e-6 and brain._prev_sensory_energy > 0:
-        surprise_level = abs(brain._prev_sensory_energy - brain.sensory_ema) / brain.sensory_ema
+    # Read surprise from signal system (D level)
+    surprise_level = getattr(brain, 'surprise', 0.0)
 
     # 1. NEUROGENESIS: requires both arousal AND surprise (non-linear)
     #    Product gate: arousal * surprise gives bursty, input-dependent growth.
