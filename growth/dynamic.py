@@ -92,6 +92,7 @@ def dynamic_growth(brain, rng=None, post_birth_fn=None):
 
     if culled > 0:
         stats['neurons_culled'] = culled
+        brain.sync_state()
         brain._build_synapse_structures()
 
     return stats

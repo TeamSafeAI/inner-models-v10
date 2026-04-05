@@ -806,6 +806,7 @@ class Brain:
 
         self.synapses.extend(new_syns)
         self.data['synapses'] = self.synapses
+        self.sync_state()
         self._build_synapse_structures()
         return {
             'sprouted': len(new_syns),

@@ -93,6 +93,11 @@ def wire_new_neurons(brain, neuron_indices, radius=50.0, density=0.05,
         brain.synapses.extend(new_syns)
         brain.data['synapses'] = brain.synapses
 
+    # Sync array state -> dicts before rebuild. Without this, STDP weight
+    # changes in plastic_w_arr (updated during tick) get lost when
+    # _build_synapse_structures reads stale weights from the synapse dicts.
+    brain.sync_state()
+
     # Always rebuild: brain.n may have changed from birth_neurons()
     # even if no new synapses were created for these neurons
     brain._build_synapse_structures()
