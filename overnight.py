@@ -505,10 +505,12 @@ def take_snapshot(brain, sensory_indices, rng, total_ticks, cycle,
         f.write(f"Wall time: {time.strftime('%H:%M:%S')}\n")
         f.write(f"Brain: {brain.n} neurons, {len(brain.synapses)} synapses\n\n")
 
-        f.write(f"DAS Signals:\n")
+        f.write(f"Signals:\n")
         f.write(f"  D (surprise/ema):  {brain.sensory_ema:.6f}\n")
         f.write(f"  A (arousal):       {brain.arousal:.6f}\n")
-        f.write(f"  S (learning rate): {brain.learning_rate_scale:.4f}\n\n")
+        f.write(f"  S (learning rate): {brain.learning_rate_scale:.4f}\n")
+        f.write(f"  C (cortisol):      {getattr(brain, 'cortisol', 0.0):.6f}\n")
+        f.write(f"  O (oxytocin):      {getattr(brain, 'oxytocin', 0.0):.6f}\n\n")
 
         f.write(f"Sensory Probe (stim {n_stim_sensory} sensory neurons):\n")
         f.write(f"  Cascade: {sensory_total} spikes in 200 ticks\n")
@@ -650,7 +652,7 @@ def run_overnight(args):
     log_path = os.path.join(run_dir, 'development.csv')
     with open(log_path, 'w') as f:
         f.write('cycle,tick,wall_s,neurons,synapses,cycle_spikes,'
-                'surprise_ema,stability,arousal,'
+                'surprise_ema,stability,arousal,cortisol,oxytocin,'
                 'born,culled,new_synapses,'
                 'sleep_replay,sleep_sprouted,sleep_drifted\n')
 
@@ -706,7 +708,10 @@ def run_overnight(args):
         sc = synapse_breakdown()
         sc_str = ' + '.join(f'{v} {k}' for k, v in sorted(sc.items()))
         print(f"  Brain: {brain.n}N, {len(brain.synapses)}S ({sc_str})")
-        print(f"  DAS: D={brain.sensory_ema:.4f} A={brain.arousal:.4f} S={brain.learning_rate_scale:.3f}")
+        cortisol = getattr(brain, 'cortisol', 0.0)
+        oxytocin = getattr(brain, 'oxytocin', 0.0)
+        print(f"  DAS: D={brain.sensory_ema:.4f} A={brain.arousal:.4f} S={brain.learning_rate_scale:.3f} "
+              f"C={cortisol:.4f} O={oxytocin:.4f}")
 
         # Phase 1: WARM UP (1000 ticks, heartbeat only)
         for t in range(1000):
@@ -740,8 +745,11 @@ def run_overnight(args):
 
                 g = cycle_growth
                 gstr = f", +{g['neurons_born']}N +{g['synapses_added']}S" if g['neurons_born'] else ''
+                c_val = getattr(brain, 'cortisol', 0.0)
+                o_val = getattr(brain, 'oxytocin', 0.0)
                 print(f"    M[{track_i+1:2d}] {fname}: {file_spikes} spk, "
-                      f"D={brain.sensory_ema:.3f} A={brain.arousal:.3f}{gstr}")
+                      f"D={brain.sensory_ema:.3f} A={brain.arousal:.3f} "
+                      f"C={c_val:.3f} O={o_val:.3f}{gstr}")
 
             # --- SILENCE (heartbeat only) ---
             for t in range(silence_ticks):
@@ -773,8 +781,11 @@ def run_overnight(args):
 
                 born = cycle_growth['neurons_born']
                 born_str = f', +{born}N' if born else ''
+                c_val = getattr(brain, 'cortisol', 0.0)
+                o_val = getattr(brain, 'oxytocin', 0.0)
                 print(f"    V[{track_i+1:2d}] {fname}: {file_spikes} spk, "
-                      f"D={brain.sensory_ema:.3f} A={brain.arousal:.3f}{born_str}")
+                      f"D={brain.sensory_ema:.3f} A={brain.arousal:.3f} "
+                      f"C={c_val:.3f} O={o_val:.3f}{born_str}")
 
             # --- SILENCE (heartbeat only) ---
             for t in range(silence_ticks):
@@ -794,9 +805,12 @@ def run_overnight(args):
         # Log to CSV
         elapsed = time.time() - start_time
         with open(log_path, 'a') as f:
+            c_end = getattr(brain, 'cortisol', 0.0)
+            o_end = getattr(brain, 'oxytocin', 0.0)
             f.write(f"{cycle},{total_ticks},{elapsed:.0f},"
                     f"{brain.n},{len(brain.synapses)},{cycle_spikes},"
                     f"{brain.sensory_ema:.6f},{brain.learning_rate_scale:.4f},{brain.arousal:.6f},"
+                    f"{c_end:.6f},{o_end:.6f},"
                     f"{cycle_growth['neurons_born']},{cycle_growth['neurons_culled']},"
                     f"{cycle_growth['synapses_added']},"
                     f"{sleep_result.get('replay_spikes', 0)},"

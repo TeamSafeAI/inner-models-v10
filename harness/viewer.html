@@ -205,6 +205,20 @@ body { background: #111; color: #ccc; font-family: monospace; overflow: hidden; 
         <span class="signal-val" id="sig-arousal-val">0</span>
     </div>
     <div style="color:#444;font-size:9px;margin:-2px 0 4px 66px">norepinephrine -- tonic boost</div>
+
+    <div class="signal-row">
+        <span class="signal-label" style="color:#c04080">Cortisol</span>
+        <div class="signal-bar"><div class="signal-fill" id="sig-cortisol" style="width:0%;background:#c04080"></div></div>
+        <span class="signal-val" id="sig-cortisol-val">0</span>
+    </div>
+    <div style="color:#444;font-size:9px;margin:-2px 0 4px 66px">stress -- suppress growth</div>
+
+    <div class="signal-row">
+        <span class="signal-label" style="color:#40c080">Oxytocin</span>
+        <div class="signal-bar"><div class="signal-fill" id="sig-oxytocin" style="width:0%;background:#40c080"></div></div>
+        <span class="signal-val" id="sig-oxytocin-val">0</span>
+    </div>
+    <div style="color:#444;font-size:9px;margin:-2px 0 4px 66px">safety -- boost learning</div>
 </div>
 
 <!-- Motor Output -->
@@ -968,6 +982,18 @@ function onFrame(data) {
         // Arousal: 0-1 direct
         document.getElementById('sig-arousal').style.width = Math.round(s.arousal * 100) + '%';
         document.getElementById('sig-arousal-val').textContent = s.arousal.toFixed(3);
+
+        // Cortisol: 0-1 direct
+        if (s.cortisol !== undefined) {
+            document.getElementById('sig-cortisol').style.width = Math.round(s.cortisol * 100) + '%';
+            document.getElementById('sig-cortisol-val').textContent = s.cortisol.toFixed(3);
+        }
+
+        // Oxytocin: 0-1 direct
+        if (s.oxytocin !== undefined) {
+            document.getElementById('sig-oxytocin').style.width = Math.round(s.oxytocin * 100) + '%';
+            document.getElementById('sig-oxytocin-val').textContent = s.oxytocin.toFixed(3);
+        }
     }
 
     drawMotor(data.motor_decoded || data.motor || []);

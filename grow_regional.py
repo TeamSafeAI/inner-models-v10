@@ -679,6 +679,172 @@ def save_regional_db(neurons, synapses, pair_counts, params, regions_used, db_pa
     return db_path
 
 
+def wire_local_inhibition(neurons, synapses, pair_counts, synapse_distances, regions, rng,
+                          local_radius=25.0, targets_per_inh=12, feedback_per_inh=5,
+                          inh_weight=-4.0, feedback_weight=2.5):
+    """Add structured local inhibitory circuits.
+
+    Real interneurons are LOCAL -- they don't project far. They form dense
+    wrapping circuits around nearby excitatory cells:
+      - Basket cells: INH -> many nearby EXC (lateral inhibition)
+      - Recurrent: EXC -> INH feedback (population control)
+      - Thalamic reticular: TH INH gates TH relay neurons
+      - BG output: BG INH -> TH EXC (action selection gate)
+
+    This runs AFTER long-range axon growth. The existing INH long-range
+    connections are kept (some real inhibitory projections ARE long-range),
+    but LOCAL density is massively increased.
+
+    Returns updated (synapses, pair_counts, synapse_distances).
+    """
+    from scipy.spatial import cKDTree
+
+    n = neurons['n']
+    positions = np.column_stack([neurons['x'], neurons['y'], neurons['z']])
+    cell_types = neurons['cell_types']
+    region_labels = neurons['regions']
+    tree = cKDTree(positions)
+
+    added_inh = 0      # INH -> EXC local
+    added_feedback = 0  # EXC -> INH feedback
+    added_pathway = 0   # specific inter-region
+
+    max_syn_pair = 12
+
+    # ── 1. LOCAL BASKET CELL CIRCUITS ──────────────────────────────
+    # Each INH neuron connects to nearby EXC neurons within its region.
+    # This is the core of lateral inhibition.
+
+    inh_indices = [i for i in range(n) if cell_types[i] == 'INH']
+    exc_indices_set = set(i for i in range(n) if cell_types[i] == 'EXC')
+
+    for src in inh_indices:
+        src_region = region_labels[src]
+
+        # Find nearby neurons
+        nearby = tree.query_ball_point(positions[src], local_radius)
+
+        # Filter: EXC neurons in same region only
+        candidates = [j for j in nearby
+                      if j != src
+                      and j in exc_indices_set
+                      and region_labels[j] == src_region]
+
+        if not candidates:
+            continue
+
+        # Pick targets (up to targets_per_inh, closest first)
+        dists = [np.linalg.norm(positions[src] - positions[j]) for j in candidates]
+        sorted_cands = sorted(zip(dists, candidates))
+        n_targets = min(targets_per_inh, len(sorted_cands))
+
+        for dist, tgt in sorted_cands[:n_targets]:
+            pair = (src, tgt)
+            count = pair_counts.get(pair, 0)
+            if count >= max_syn_pair:
+                continue
+            synapses.append(pair)
+            pair_counts[pair] = count + 1
+            if pair not in synapse_distances:
+                synapse_distances[pair] = dist
+            added_inh += 1
+
+    # ── 2. RECURRENT FEEDBACK: EXC -> INH ─────────────────────────
+    # Nearby EXC neurons excite local INH neurons, creating negative
+    # feedback loops that control population activity.
+
+    inh_set = set(inh_indices)
+    for tgt_inh in inh_indices:
+        tgt_region = region_labels[tgt_inh]
+        nearby = tree.query_ball_point(positions[tgt_inh], local_radius)
+
+        candidates = [j for j in nearby
+                      if j != tgt_inh
+                      and j in exc_indices_set
+                      and region_labels[j] == tgt_region]
+
+        if not candidates:
+            continue
+
+        dists = [np.linalg.norm(positions[tgt_inh] - positions[j]) for j in candidates]
+        sorted_cands = sorted(zip(dists, candidates))
+        n_fb = min(feedback_per_inh, len(sorted_cands))
+
+        for dist, src_exc in sorted_cands[:n_fb]:
+            pair = (src_exc, tgt_inh)
+            count = pair_counts.get(pair, 0)
+            if count >= max_syn_pair:
+                continue
+            synapses.append(pair)
+            pair_counts[pair] = count + 1
+            if pair not in synapse_distances:
+                synapse_distances[pair] = dist
+            added_feedback += 1
+
+    # ── 3. THALAMIC RETICULAR NUCLEUS ──────────────────────────────
+    # TH INH neurons gate TH EXC relay neurons. This is how the thalamus
+    # controls what gets relayed to cortex (attention).
+    # Wider radius: reticular neurons project across thalamic nuclei.
+
+    th_inh = [i for i in range(n) if cell_types[i] == 'INH' and region_labels[i] == 'thalamus']
+    th_exc = [i for i in range(n) if cell_types[i] == 'EXC' and region_labels[i] == 'thalamus']
+
+    for src in th_inh:
+        # Thalamic reticular has wider reach (40um vs 25um local)
+        nearby = tree.query_ball_point(positions[src], 40.0)
+        candidates = [j for j in nearby if j in set(th_exc) and j != src]
+
+        n_targets = min(20, len(candidates))  # each reticular connects to many relay
+        if candidates:
+            chosen = rng.choice(candidates, size=min(n_targets, len(candidates)), replace=False)
+            for tgt in chosen:
+                pair = (src, tgt)
+                count = pair_counts.get(pair, 0)
+                if count >= max_syn_pair:
+                    continue
+                synapses.append(pair)
+                pair_counts[pair] = count + 1
+                dist = np.linalg.norm(positions[src] - positions[tgt])
+                if pair not in synapse_distances:
+                    synapse_distances[pair] = dist
+                added_pathway += 1
+
+    # ── 4. BG -> TH INHIBITORY OUTPUT ─────────────────────────────
+    # Basal ganglia inhibits thalamus (default state = suppressed).
+    # Dopamine-driven disinhibition selects actions.
+    # Uses medium-range connections (cross-region).
+
+    bg_inh = [i for i in range(n) if cell_types[i] == 'INH' and region_labels[i] == 'basal_ganglia']
+    if bg_inh and th_exc:
+        # Pick a subset of BG INH to project to TH
+        n_projecting = max(1, len(bg_inh) // 3)  # ~33% of BG INH projects to TH
+        projectors = rng.choice(bg_inh, size=n_projecting, replace=False)
+
+        for src in projectors:
+            # Each projector connects to 3-8 TH relay neurons
+            n_targets = rng.randint(3, 9)
+            chosen = rng.choice(th_exc, size=min(n_targets, len(th_exc)), replace=False)
+            for tgt in chosen:
+                pair = (src, tgt)
+                count = pair_counts.get(pair, 0)
+                if count >= max_syn_pair:
+                    continue
+                synapses.append(pair)
+                pair_counts[pair] = count + 1
+                dist = np.linalg.norm(positions[src] - positions[tgt])
+                if pair not in synapse_distances:
+                    synapse_distances[pair] = dist
+                added_pathway += 1
+
+    print(f"\n  STRUCTURED INHIBITION")
+    print(f"    Local basket (INH->EXC):  {added_inh:,} connections")
+    print(f"    Recurrent (EXC->INH):     {added_feedback:,} connections")
+    print(f"    Pathway (TRN + BG->TH):   {added_pathway:,} connections")
+    print(f"    Total added:              {added_inh + added_feedback + added_pathway:,}")
+
+    return synapses, pair_counts, synapse_distances
+
+
 def auto_contact_radius(n_neurons, regions):
     """Estimate contact_radius to yield ~10-15 synapses per neuron.
 
@@ -844,6 +1010,11 @@ def main():
         print(f"\n  Pruning weakest {args.prune*100:.0f}% of connections...")
         synapses, pair_counts, synapse_distances = prune_weak_synapses(
             synapses, pair_counts, synapse_distances, args.prune, rng)
+
+    # 2.7. Structured local inhibition (basket cells, feedback, pathways)
+    print(f"\n  Wiring structured inhibition...")
+    synapses, pair_counts, synapse_distances = wire_local_inhibition(
+        neurons, synapses, pair_counts, synapse_distances, regions, rng)
 
     # 3. Analyze
     analyze_regional(neurons, synapses, regions)

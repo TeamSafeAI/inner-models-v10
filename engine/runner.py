@@ -449,7 +449,7 @@ class Brain:
                         li = src_idx[ltd_active]
                         ep_a = ep[ltd_active]
                         w = self.plastic_w_arr[li]
-                        lr = self.plastic_lr_arr[li] * self.learning_rate_scale
+                        lr = self.plastic_lr_arr[li] * self.learning_rate_scale * getattr(self, 'oxytocin_lr_boost', 1.0)
                         wmin = self.plastic_wmin_arr[li]
                         wmax = self.plastic_wmax_arr[li]
                         rng = wmax - wmin
@@ -475,7 +475,7 @@ class Brain:
                         ei = tgt_idx[has_elig]
                         e = elig[has_elig]
                         w = self.plastic_w_arr[ei]
-                        lr = self.plastic_lr_arr[ei] * self.learning_rate_scale
+                        lr = self.plastic_lr_arr[ei] * self.learning_rate_scale * getattr(self, 'oxytocin_lr_boost', 1.0)
                         wmin = self.plastic_wmin_arr[ei]
                         wmax = self.plastic_wmax_arr[ei]
                         rng = wmax - wmin

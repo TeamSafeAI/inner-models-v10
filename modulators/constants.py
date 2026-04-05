@@ -1,9 +1,11 @@
 """
-DAS modulator constants -- thresholds, decay rates, biological mappings.
+Neuromodulator constants -- thresholds, decay rates, biological mappings.
 
 D = Dopamine (surprise / prediction error)
 A = Adrenaline/norepinephrine (arousal / gain)
 S = Serotonin (stability / mood baseline)
+C = Cortisol (sustained stress / growth suppression)
+O = Oxytocin (safety / learning boost)
 """
 
 # Surprise (dopamine analog)
@@ -12,8 +14,14 @@ SURPRISE_THRESHOLD = 0.15        # fractional deviation triggers reward
 SURPRISE_REWARD_SCALE = 0.8      # maps surprise -> reward magnitude (capped at 1.0)
 
 # Stability (serotonin analog)
-STABILITY_TARGET_VAR = 0.0004    # target population rate variance
-STABILITY_SENSITIVITY = 500      # how fast scale responds to variance deviation
+# Target variance is now DYNAMIC: the brain learns its own baseline via EMA.
+# STABILITY_TARGET_VAR is used as initial seed only (overwritten after first eval).
+# Sensitivity measures how sharply S responds to deviation FROM the learned baseline.
+# A 50% variance spike above baseline -> S drops to ~0.5 (moderate throttle).
+# A 200%+ spike -> S hits floor (0.2). Variance BELOW baseline -> S stays at 1.0.
+STABILITY_TARGET_VAR = 0.0004    # initial seed (overwritten by dynamic EMA)
+STABILITY_VAR_EMA_ALPHA = 0.05   # how fast the baseline adapts (~20 evals to converge)
+STABILITY_SENSITIVITY = 2.0      # fractional: 0.5 = 50% above baseline -> S=0.0 (clamped to 0.2)
 STABILITY_MIN_SCALE = 0.2        # minimum learning rate scale
 STABILITY_EVAL_INTERVAL = 100    # ticks between evaluations
 
@@ -26,3 +34,25 @@ AROUSAL_DELTA_THRESHOLD = 0.1    # minimum input change to trigger arousal
 # Neuromodulatory current
 NEUROMOD_DECAY = 0.995           # current decay per tick (~200ms tau)
 NEUROMOD_GAIN = 3.0              # uA per unit magnitude per unit sensitivity
+
+# Cortisol (sustained stress)
+# Biology: HPA axis. Minutes to build, hours to clear.
+# "Sustained threat -- stop growing, survive."
+CORTISOL_AROUSAL_THRESHOLD = 0.5   # A must exceed this to accumulate stress
+CORTISOL_ONSET_TICKS = 200         # sustained ticks before cortisol rises
+CORTISOL_RISE_RATE = 0.002         # per-tick rise (~500 ticks to 1.0)
+CORTISOL_DECAY = 0.9995            # per-tick decay (~1400 tick half-life)
+CORTISOL_COUNTER_DECAY = 0.95      # onset counter decay when A drops (~14 tick half-life)
+CORTISOL_GROWTH_SUPPRESSION = 0.8  # growth reduced 80% at level=1.0
+CORTISOL_SURVIVAL_REDUCTION = 300  # ticks removed from survival window at level=1.0
+
+# Oxytocin (safety / bonding)
+# Biology: released during calm, familiar, predictable contexts.
+# "You're safe -- consolidate learning, keep new neurons."
+OXYTOCIN_AROUSAL_CEILING = 0.2     # A must be below this for calm
+OXYTOCIN_SURPRISE_CEILING = 0.3    # D must be below this for calm
+OXYTOCIN_ONSET_TICKS = 300         # sustained calm ticks before oxytocin rises
+OXYTOCIN_RISE_RATE = 0.003         # per-tick rise (~333 ticks to 1.0)
+OXYTOCIN_DECAY = 0.998             # per-tick decay (~350 tick half-life)
+OXYTOCIN_LR_BOOST = 0.5            # max additional LR multiplier at level=1.0
+OXYTOCIN_SURVIVAL_BOOST = 500      # ticks added to survival window at level=1.0

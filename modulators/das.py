@@ -1,5 +1,5 @@
 """
-DAS modulators -- the three chemical gradients that gate growth and learning.
+Neuromodulatory system -- built on the general Signal architecture.
 
 D = Dopamine (surprise / prediction error)
     "Something unexpected -- update your model."
@@ -10,81 +10,135 @@ A = Adrenaline/norepinephrine (arousal / gain)
 S = Serotonin (stability / learning rate)
     "Population unstable -- slow learning until things settle."
 
-All fire on sensory statistics. When input is flat tonic, all signals
-stay neutral (backward compatible with pre-DAS brains).
+C = Cortisol (sustained stress / growth suppression)
+    "Sustained threat -- stop growing, survive."
+
+O = Oxytocin (safety / bonding / learning boost)
+    "You're safe -- consolidate learning, keep new neurons."
+
+All five are Signal instances. Same external API: init_signals, update_signals,
+deliver_reward. runner.py reads brain attributes set by signal triggers.
 """
 import numpy as np
+from modulators.signal import SignalSystem
 from modulators.constants import (
     SURPRISE_EMA_ALPHA, SURPRISE_THRESHOLD, SURPRISE_REWARD_SCALE,
-    STABILITY_TARGET_VAR, STABILITY_SENSITIVITY, STABILITY_MIN_SCALE,
-    STABILITY_EVAL_INTERVAL,
+    STABILITY_TARGET_VAR, STABILITY_VAR_EMA_ALPHA, STABILITY_SENSITIVITY,
+    STABILITY_MIN_SCALE, STABILITY_EVAL_INTERVAL,
     AROUSAL_DECAY, AROUSAL_GAIN, AROUSAL_SPIKE_SCALE, AROUSAL_DELTA_THRESHOLD,
-    NEUROMOD_DECAY, NEUROMOD_GAIN,
+    NEUROMOD_GAIN,
+    CORTISOL_AROUSAL_THRESHOLD, CORTISOL_ONSET_TICKS, CORTISOL_RISE_RATE,
+    CORTISOL_DECAY, CORTISOL_COUNTER_DECAY,
+    OXYTOCIN_AROUSAL_CEILING, OXYTOCIN_SURPRISE_CEILING, OXYTOCIN_ONSET_TICKS,
+    OXYTOCIN_RISE_RATE, OXYTOCIN_DECAY, OXYTOCIN_LR_BOOST,
 )
 
 
+# =====================================================================
+# Signal configurations -- biology as data, not code
+# =====================================================================
+
+D_CONFIG = {
+    'trigger': {
+        'type': 'prediction_error',
+        'ema_alpha': SURPRISE_EMA_ALPHA,       # 0.02
+        'threshold': SURPRISE_THRESHOLD,        # 0.15
+        'reward_scale': SURPRISE_REWARD_SCALE,  # 0.8
+    },
+}
+
+S_CONFIG = {
+    'initial_level': 1.0,
+    'trigger': {
+        'type': 'population_stat',
+        'eval_interval': STABILITY_EVAL_INTERVAL,  # 100
+        'ema_alpha': STABILITY_VAR_EMA_ALPHA,       # 0.05
+        'sensitivity': STABILITY_SENSITIVITY,        # 2.0
+        'min_scale': STABILITY_MIN_SCALE,            # 0.2
+    },
+}
+
+A_CONFIG = {
+    'trigger': {
+        'type': 'input_delta',
+        'delta_threshold': AROUSAL_DELTA_THRESHOLD,  # 0.1
+        'spike_scale': AROUSAL_SPIKE_SCALE,           # 0.4
+        'decay': AROUSAL_DECAY,                       # 0.995
+    },
+}
+
+CORTISOL_CONFIG = {
+    'trigger': {
+        'type': 'sustained_signal',
+        'watch_signal': 'A',                          # monitors arousal
+        'watch_threshold': CORTISOL_AROUSAL_THRESHOLD, # 0.5
+        'onset_ticks': CORTISOL_ONSET_TICKS,           # 200
+        'rise_rate': CORTISOL_RISE_RATE,               # 0.002
+        'decay': CORTISOL_DECAY,                       # 0.9995
+        'counter_decay': CORTISOL_COUNTER_DECAY,       # 0.95
+    },
+}
+
+OXYTOCIN_CONFIG = {
+    'trigger': {
+        'type': 'calm_familiar',
+        'watch_signals': [
+            ('A', OXYTOCIN_AROUSAL_CEILING),     # A < 0.2
+            ('D', OXYTOCIN_SURPRISE_CEILING),    # D < 0.3
+        ],
+        'onset_ticks': OXYTOCIN_ONSET_TICKS,     # 300
+        'rise_rate': OXYTOCIN_RISE_RATE,          # 0.003
+        'decay': OXYTOCIN_DECAY,                  # 0.998
+    },
+}
+
+
+# =====================================================================
+# API (same interface as before -- runner.py reads brain attributes)
+# =====================================================================
+
 def init_signals(brain):
-    """Initialize DAS signal state on a Brain instance."""
-    # Surprise (dopamine)
+    """Initialize all neuromodulatory signals on a Brain instance."""
+    system = SignalSystem()
+    # Order matters: D, S, A first (original DAS), then cortisol, oxytocin
+    # (cortisol reads A; oxytocin reads A and D)
+    system.add('D', D_CONFIG)
+    system.add('S', S_CONFIG)
+    system.add('A', A_CONFIG)
+    system.add('cortisol', CORTISOL_CONFIG)
+    system.add('oxytocin', OXYTOCIN_CONFIG)
+    brain._signal_system = system
+
+    # Brain attributes read by runner.py and external code
     brain.sensory_ema = 0.0
     brain.surprise_threshold = SURPRISE_THRESHOLD
     brain._prev_sensory_energy = 0.0
-
-    # Stability (serotonin)
     brain.learning_rate_scale = 1.0
+    brain.stability_var_ema = None
     brain.stability_target_var = STABILITY_TARGET_VAR
-
-    # Arousal (norepinephrine)
     brain.arousal = 0.0
     brain.arousal_decay = AROUSAL_DECAY
     brain.arousal_gain = AROUSAL_GAIN
+    brain.cortisol = 0.0
+    brain.oxytocin = 0.0
+    brain.oxytocin_lr_boost = 1.0
+
+
+def _apply_signal_effects(brain):
+    """Post-update hook: copy signal levels to brain attributes + compute effects."""
+    system = brain._signal_system
+    brain.cortisol = system['cortisol'].level
+    brain.oxytocin = system['oxytocin'].level
+    brain.oxytocin_lr_boost = 1.0 + OXYTOCIN_LR_BOOST * system['oxytocin'].level
 
 
 def update_signals(brain, external_I, tick):
-    """Update all three DAS signals from input statistics.
+    """Update all signals from input statistics.
 
     Called once per tick from Brain.tick(), after spike detection.
-    Modifies brain state in place.
     """
-    # Compute sensory energy from external input
-    # Use sensory_mask if available (targets only sensory region neurons)
-    # so the signal isn't drowned by thousands of flat-tonic neurons
-    if external_I is not None:
-        if hasattr(brain, 'sensory_mask') and brain.sensory_mask is not None:
-            mask = brain.sensory_mask
-            # Auto-extend mask if neurons were born (new neurons aren't sensory)
-            if len(mask) < len(external_I):
-                mask = np.concatenate([mask, np.zeros(len(external_I) - len(mask), dtype=bool)])
-                brain.sensory_mask = mask
-            sensory_energy = float(np.var(external_I[mask]))
-        else:
-            sensory_energy = float(np.var(external_I))
-    else:
-        sensory_energy = 0.0
-
-    # --- D: Surprise (dopamine) ---
-    # Prediction error on input variance
-    brain.sensory_ema = (1 - SURPRISE_EMA_ALPHA) * brain.sensory_ema + \
-                        SURPRISE_EMA_ALPHA * sensory_energy
-    if brain.sensory_ema > 1e-6:
-        surprise = abs(sensory_energy - brain.sensory_ema) / brain.sensory_ema
-        if surprise > brain.surprise_threshold:
-            brain.deliver_reward(min(1.0, SURPRISE_REWARD_SCALE * surprise))
-
-    # --- S: Stability (serotonin) ---
-    # Global learning rate modulation based on population variance
-    if tick > 0 and tick % STABILITY_EVAL_INTERVAL == 0:
-        pop_var = float(np.var(brain.activity_trace))
-        brain.learning_rate_scale = max(STABILITY_MIN_SCALE, min(1.0,
-            1.0 - (pop_var - brain.stability_target_var) * STABILITY_SENSITIVITY))
-
-    # --- A: Arousal (norepinephrine) ---
-    # Sudden input change detection
-    delta = abs(sensory_energy - brain._prev_sensory_energy)
-    if delta > AROUSAL_DELTA_THRESHOLD:
-        brain.arousal = min(1.0, brain.arousal + AROUSAL_SPIKE_SCALE * delta)
-    brain.arousal *= brain.arousal_decay
-    brain._prev_sensory_energy = sensory_energy
+    brain._signal_system.update_all(brain, external_I, tick)
+    _apply_signal_effects(brain)
 
 
 def deliver_reward(brain, magnitude):
@@ -115,7 +169,7 @@ def deliver_reward(brain, magnitude):
         return
 
     w = brain.reward_w_arr[active]
-    lr = brain.reward_lr_arr[active] * brain.learning_rate_scale
+    lr = brain.reward_lr_arr[active] * brain.learning_rate_scale * getattr(brain, 'oxytocin_lr_boost', 1.0)
     wmin = brain.reward_wmin_arr[active]
     wmax = brain.reward_wmax_arr[active]
     rng = wmax - wmin
