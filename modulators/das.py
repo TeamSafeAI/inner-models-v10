@@ -26,7 +26,7 @@ from modulators.constants import (
     STABILITY_TARGET_VAR, STABILITY_VAR_EMA_ALPHA, STABILITY_SENSITIVITY,
     STABILITY_MIN_SCALE, STABILITY_EVAL_INTERVAL,
     AROUSAL_DECAY, AROUSAL_GAIN, AROUSAL_SPIKE_SCALE, AROUSAL_DELTA_THRESHOLD,
-    AROUSAL_DELTA_FLOOR, AROUSAL_HABITUATION_ALPHA,
+    AROUSAL_DELTA_FLOOR, AROUSAL_HABITUATION_UP, AROUSAL_HABITUATION_DOWN,
     NEUROMOD_GAIN,
     CORTISOL_EMA_ALPHA, CORTISOL_VAR_ALPHA, CORTISOL_Z_THRESHOLD,
     CORTISOL_ONSET_TICKS, CORTISOL_RISE_RATE,
@@ -65,7 +65,8 @@ A_CONFIG = {
         'type': 'input_delta',
         'delta_threshold': AROUSAL_DELTA_THRESHOLD,      # 2.0 (ratio, not absolute)
         'delta_floor': AROUSAL_DELTA_FLOOR,               # 0.05 (absolute minimum)
-        'habituation_alpha': AROUSAL_HABITUATION_ALPHA,   # 0.01 (~100 tick adaptation)
+        'habituation_up': AROUSAL_HABITUATION_UP,         # 0.01 (fast to new input)
+        'habituation_down': AROUSAL_HABITUATION_DOWN,     # 0.001 (slow decay in silence)
         'spike_scale': AROUSAL_SPIKE_SCALE,               # 0.4
         'decay': AROUSAL_DECAY,                            # 0.995
     },

@@ -36,7 +36,8 @@ AROUSAL_GAIN = 2.5               # max mA boost at full arousal (1.0)
 AROUSAL_SPIKE_SCALE = 0.4        # novelty ratio -> arousal increment
 AROUSAL_DELTA_THRESHOLD = 2.0    # ratio: delta must exceed EMA by this factor
 AROUSAL_DELTA_FLOOR = 0.05       # absolute minimum delta to spike (prevents noise)
-AROUSAL_HABITUATION_ALPHA = 0.01 # delta EMA adaptation rate (~100 tick tau)
+AROUSAL_HABITUATION_UP = 0.01    # fast adaptation to new input (~100 tick tau)
+AROUSAL_HABITUATION_DOWN = 0.001 # slow decay during silence (~1000 tick tau)
 
 # Neuromodulatory current
 NEUROMOD_DECAY = 0.995           # current decay per tick (~200ms tau)

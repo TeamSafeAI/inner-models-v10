@@ -98,9 +98,12 @@ def _trigger_prediction_error(sig, brain, ctx):
     cfg = sig.config['trigger']
     energy = ctx['sensory_energy']
 
-    # Update EMA
-    ema = sig.state.get('ema', 0.0)
-    ema = (1 - cfg['ema_alpha']) * ema + cfg['ema_alpha'] * energy
+    # Update EMA (seed from first observation to avoid bootstrap spike)
+    ema = sig.state.get('ema', None)
+    if ema is None:
+        ema = energy
+    else:
+        ema = (1 - cfg['ema_alpha']) * ema + cfg['ema_alpha'] * energy
     sig.state['ema'] = ema
     brain.sensory_ema = ema
 
@@ -172,7 +175,8 @@ def _trigger_population_stat(sig, brain, ctx):
 # Config keys:
 #   delta_threshold     -- ratio: delta must exceed EMA by this factor (2.0)
 #   delta_floor         -- absolute minimum delta to spike (0.05)
-#   habituation_alpha   -- delta EMA adaptation rate (0.01)
+#   habituation_up      -- delta EMA alpha when input is active (0.01, fast)
+#   habituation_down    -- delta EMA alpha during silence (0.001, slow)
 #   spike_scale         -- novelty ratio -> arousal increment (0.4)
 #   decay               -- per-tick multiplicative decay (0.995)
 # =====================================================================
@@ -184,10 +188,15 @@ def _trigger_input_delta(sig, brain, ctx):
 
     raw_delta = abs(energy - prev)
 
-    # Habituation: adapt to expected delta magnitude
-    hab_alpha = cfg.get('habituation_alpha', 0.01)
+    # Asymmetric habituation: fast adaptation UP (to new input patterns),
+    # slow decay DOWN (preserves memory of recent activity through silence).
+    # A 5-second silence won't reset what the brain learned about input.
     delta_ema = sig.state.get('delta_ema', raw_delta + 1e-6)
-    delta_ema = (1.0 - hab_alpha) * delta_ema + hab_alpha * raw_delta
+    if raw_delta >= delta_ema:
+        alpha = cfg.get('habituation_up', 0.01)
+    else:
+        alpha = cfg.get('habituation_down', 0.001)
+    delta_ema = (1.0 - alpha) * delta_ema + alpha * raw_delta
     sig.state['delta_ema'] = delta_ema
 
     # Spike on UNEXPECTED deltas (exceed adapted expectation)
