@@ -722,21 +722,23 @@ class Brain:
             return {'sprouted': 0, 'candidates': 0}
 
         cutoff = self.tick_count - window
-        recent = [(t, n) for t, n in spikes if t >= cutoff]
-        if not recent:
-            return {'sprouted': 0, 'candidates': 0}
 
         pos_x = np.array([n.get('pos_x', 0.0) for n in self.neurons], dtype=np.float64)
         pos_y = np.array([n.get('pos_y', 0.0) for n in self.neurons], dtype=np.float64)
         pos_z = np.array([n.get('pos_z', 0.0) for n in self.neurons], dtype=np.float64)
 
+        # Build bins directly from spike list (no copy -- avoids MemoryError on large recorders)
         bin_size = 5
         bins = {}
-        for t, n in recent:
+        for t, n in spikes:
+            if t < cutoff:
+                continue
             b = t // bin_size
             if b not in bins:
                 bins[b] = set()
             bins[b].add(n)
+        if not bins:
+            return {'sprouted': 0, 'candidates': 0}
 
         rng = np.random.RandomState(seed or 0)
         bin_keys = list(bins.keys())

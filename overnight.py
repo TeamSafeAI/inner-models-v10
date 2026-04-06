@@ -899,6 +899,9 @@ def run_overnight(args):
                     total_ticks += 1
 
                 if args.growth:
+                    # Trim recorder before growth to prevent MemoryError during
+                    # synapse rebuild (108M+ spike tuples = ~7 GB per cycle)
+                    brain.recorder.trim(5000)
                     stats = brain.dynamic_growth(rng=rng, post_birth_fn=assign_regional_excitability)
                     for k in cycle_growth:
                         cycle_growth[k] += stats.get(k, 0)
@@ -937,6 +940,7 @@ def run_overnight(args):
                     total_ticks += 1
 
                 if args.growth:
+                    brain.recorder.trim(5000)
                     stats = brain.dynamic_growth(rng=rng, post_birth_fn=assign_regional_excitability)
                     for k in cycle_growth:
                         cycle_growth[k] += stats.get(k, 0)
@@ -961,6 +965,10 @@ def run_overnight(args):
                 total_ticks += 1
 
         # Phase 3: SLEEP
+        # Trim recorder before sleep to prevent MemoryError on large brains.
+        # Full cycle = 108M+ spike tuples = ~7 GB. Sprout uses sleep replay
+        # window; drift needs enough to identify silent neurons.
+        brain.recorder.trim(5000)
         print(f"  Sleep phase ({args.sleep_ticks} ticks)...", end='')
         sleep_result = brain.sleep(ticks=args.sleep_ticks, compression=0.85, seed=cycle)
         total_ticks += args.sleep_ticks

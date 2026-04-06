@@ -39,6 +39,28 @@ class Recorder:
 
         self.tick += 1
 
+    def trim(self, keep_ticks):
+        """Remove spikes older than keep_ticks before current tick.
+
+        Reduces memory for long runs. Spikes are sorted by tick, so we
+        binary-search for the cutoff and slice.
+        """
+        if not self.spikes:
+            return
+        cutoff = self.tick - keep_ticks
+        if cutoff <= 0:
+            return
+        # Spikes are appended in tick order -- binary search for cutoff
+        lo, hi = 0, len(self.spikes)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if self.spikes[mid][0] < cutoff:
+                lo = mid + 1
+            else:
+                hi = mid
+        if lo > 0:
+            del self.spikes[:lo]
+
     def snapshot_weights(self, synapses):
         """Capture current synapse weights."""
         weights = [(s['id'], s['type'], s['weight']) for s in synapses]
